@@ -31,6 +31,9 @@ def load_settings() -> Settings:
     except json.JSONDecodeError as exc:
         raise RuntimeError("GOOGLE_CREDENTIALS must contain valid service-account JSON.") from exc
 
+    if not isinstance(credentials, dict):
+        raise RuntimeError("GOOGLE_CREDENTIALS must be a JSON object.")
+
     required_fields = {"type", "client_email", "private_key", "token_uri"}
     absent = sorted(required_fields.difference(credentials))
     if absent:
