@@ -48,11 +48,32 @@ class SheetsTests(unittest.TestCase):
             [["2026-11-17T09:00:00+00:00", "202", "New story", "https://new.example", 25]],
             value_input_option="RAW",
         )
+        self.worksheet.update.assert_not_called()
 
-    def test_creates_header_for_empty_worksheet(self):
-        self.worksheet.get_all_values.return_value = []
+    def test_writes_header_to_blank_first_row(self):
+        self.worksheet.get_all_values.return_value = [[""]]
         self.assertEqual(append_new_stories(self.client, self.settings, []), 0)
-        self.worksheet.append_row.assert_called_once_with(HEADERS, value_input_option="RAW")
+        self.worksheet.update.assert_called_once_with(
+            range_name="A1:E1", values=[HEADERS]
+        )
+
+    def test_initializes_empty_worksheet_and_appends_stories(self):
+        self.worksheet.get_all_values.return_value = []
+        story = {
+            "scraped_at": "2026-11-17T09:00:00+00:00",
+            "story_id": "303",
+            "title": "Fresh story",
+            "url": "https://fresh.example",
+            "points": 7,
+        }
+        self.assertEqual(append_new_stories(self.client, self.settings, [story]), 1)
+        self.worksheet.update.assert_called_once_with(
+            range_name="A1:E1", values=[HEADERS]
+        )
+        self.worksheet.append_rows.assert_called_once_with(
+            [["2026-11-17T09:00:00+00:00", "303", "Fresh story", "https://fresh.example", 7]],
+            value_input_option="RAW",
+        )
 
     def test_rejects_unexpected_existing_header(self):
         self.worksheet.get_all_values.return_value = [["Different header"]]
