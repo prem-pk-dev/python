@@ -16,7 +16,7 @@ def connect(settings: Settings):
 
 
 def append_new_stories(client, settings: Settings, stories: list[dict]) -> int:
-    """Append unseen stories; preserve existing rows and return the appended count."""
+    """Append unseen stories; initialize a blank header row and preserve existing rows."""
     spreadsheet = client.open_by_key(settings.google_sheet_id)
     try:
         worksheet = spreadsheet.worksheet(settings.worksheet_name)
@@ -26,21 +26,28 @@ def append_new_stories(client, settings: Settings, stories: list[dict]) -> int:
         )
 
     existing_values = worksheet.get_all_values()
-    if not existing_values:
-        worksheet.append_row(HEADERS, value_input_option="RAW")
-        existing_ids: set[str] = set()
+    first_row = existing_values[0] if existing_values else []
+    header_is_blank = not any(str(cell).strip() for cell in first_row)
+
+    if not existing_values or header_is_blank:
+        # A newly-created worksheet can be returned as a blank first row ([""]).
+        # Write the header explicitly to A1 so it is not appended below blank rows.
+        worksheet.update(range_name="A1:E1", values=[HEADERS])
+        data_rows = existing_values[1:] if existing_values else []
     else:
-        if existing_values[0] != HEADERS:
+        if first_row != HEADERS:
             raise RuntimeError(
                 "Worksheet header does not match expected scraper columns. "
                 "Use a dedicated worksheet or correct its header row."
             )
-        id_index = HEADERS.index("Story ID")
-        existing_ids = {
-            row[id_index]
-            for row in existing_values[1:]
-            if len(row) > id_index and row[id_index]
-        }
+        data_rows = existing_values[1:]
+
+    id_index = HEADERS.index("Story ID")
+    existing_ids = {
+        row[id_index]
+        for row in data_rows
+        if len(row) > id_index and row[id_index]
+    }
 
     rows = []
     for story in stories:
