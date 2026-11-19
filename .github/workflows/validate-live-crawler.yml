@@ -1,0 +1,38 @@
+name: Validate Live Crawler
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate Worker module syntax
+        run: node --input-type=module --check < cloudflare/worker.js
+      - name: Validate embedded dashboard JavaScript
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const source = fs.readFileSync("cloudflare/worker.js", "utf8");
+            const html = source.match(/const HTML = String.raw`([\s\S]*?)`;\nconst cors/);
+            if (!html) throw new Error("Dashboard HTML template not found");
+            const scripts = [...html[1].matchAll(/<script>([\s\S]*?)<\/script>/g)];
+            if (scripts.length !== 1) throw new Error("Expected one inline dashboard script");
+            new Function(scripts[0][1]);
+          '
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate Playwright crawler syntax
+        run: python -m py_compile scripts/visual_crawler.py
+      - name: Enforce no screenshot artifacts or DO storage API usage
+        run: |
+          ! grep -q "actions/upload-artifact" .github/workflows/visual-crawler.yml
+          ! grep -Eq "state\.storage|storage\.put|storage\.get|storage\.delete" cloudflare/worker.js
