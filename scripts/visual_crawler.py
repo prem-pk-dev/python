@@ -48,7 +48,7 @@ async def validate_public_url(value):
     if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
         raise ValueError("Only public HTTP/HTTPS URLs without credentials are accepted.")
     host = parsed.hostname.rstrip(".").lower()
-    if host in ("localhost", "metadata.google.internal") or host.endswith((".localhost", ".local", ".internal")):
+    if host in ("localhost", "metadata.google.internal") or host.endswith((".localhost", ".local", ".internal", ".lan", ".home", ".test")):
         raise ValueError("Local and internal hostnames are blocked.")
     try:
         ipaddress.ip_address(host)
@@ -58,7 +58,7 @@ async def validate_public_url(value):
             raise
     if "." not in host:
         raise ValueError("A fully qualified public hostname is required.")
-    if host not in DNS_CACHE:
+    if host not in DNS_CACHE or DNS_CACHE[host] < time.monotonic():
         loop = asyncio.get_running_loop()
         try:
             records = await loop.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
@@ -67,7 +67,7 @@ async def validate_public_url(value):
         addresses = {record[4][0] for record in records}
         if not addresses or any(not is_public_ip(address) for address in addresses):
             raise ValueError(f"Hostname {host} resolves to a non-public IP address.")
-        DNS_CACHE[host] = True
+        DNS_CACHE[host] = time.monotonic() + 10
     return value
 
 
