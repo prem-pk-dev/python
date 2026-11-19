@@ -245,7 +245,7 @@ if(wsMatch&&request.headers.get("Upgrade")?.toLowerCase()==="websocket"){
  if(!await verifyWsToken(tokenFromQuery,wsMatch[1],env))return json({error:"Unauthorized or expired WebSocket session."},401);
  const origin=request.headers.get("Origin");if(origin&&new URL(origin).host!==url.host)return json({error:"WebSocket origin rejected."},403);
  const stub=env.CRAWL_SESSION_HUB.get(env.CRAWL_SESSION_HUB.idFromName(wsMatch[1]));
- return stub.fetch(new Request("https://crawl-hub/connect",request));
+ return stub.fetch(request);
 }
 const ingestMatch=url.pathname.match(/^\/api\/crawl\/([0-9a-f-]+)\/ingest$/i);
 if(ingestMatch&&request.method==="POST"){
@@ -261,24 +261,29 @@ if(!url.pathname.startsWith("/api/"))return new Response("Not found",{status:404
 
 /** Volatile WebSocket relay only. No storage API is called. */
 export class CrawlSessionHub {
- constructor(state, env) { this.clients=new Set(); }
- dropClient(socket) { this.clients.delete(socket); }
+ constructor(state, env) { this.state=state; this.env=env; }
  async fetch(request) {
   const url=new URL(request.url);
-  if(url.pathname==="/connect"&&request.method==="GET"){
-   const pair=new WebSocketPair();const client=pair[0],server=pair[1];server.accept();this.clients.add(server);
-   server.addEventListener("close",()=>this.dropClient(server));server.addEventListener("error",()=>this.dropClient(server));
+  if(url.pathname.endsWith("/ws")&&request.method==="GET"){
+   const pair=new WebSocketPair();const client=pair[0],server=pair[1];
+   this.state.acceptWebSocket(server);
    server.send(JSON.stringify({type:"connected",timestamp:Date.now(),message:"Connected to volatile in-memory relay."}));
    return new Response(null,{status:101,webSocket:client});
   }
   if(url.pathname==="/ingest"&&request.method==="POST"){
    const raw=await request.text();if(new TextEncoder().encode(raw).length>950000)return new Response("too large",{status:413});
-   if(!this.clients.size)return new Response("no connected clients; event discarded",{status:202});
+   const clients=this.state.getWebSockets();if(!clients.length)return new Response("no connected clients; event discarded",{status:202});
    let event;try{event=JSON.parse(raw)}catch{return new Response("invalid JSON",{status:400})}
    const message=JSON.stringify(event);
-   for(const ws of [...this.clients]){try{if(ws.readyState===1)ws.send(message);else this.dropClient(ws)}catch{this.dropClient(ws)}}
+   for(const ws of clients){try{ws.send(message)}catch{try{ws.close(1011,"relay send failed")}catch{}}}
    return new Response("relayed",{status:202});
   }
   return new Response("not found",{status:404});
+ }
+ webSocketClose(ws, code, reason, wasClean) {
+  try { ws.close(code, reason); } catch {}
+ }
+ webSocketError(ws, error) {
+  try { ws.close(1011, "relay socket error"); } catch {}
  }
 }
