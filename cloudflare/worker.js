@@ -212,7 +212,7 @@ function nonPublicAddress(value){
  return true;
 }
 async function publicCrawlUrl(raw){
- const target=publicUrl(raw),host=target.hostname.replace(/^\[|\]$/g,"").toLowerCase();
+ const target=publicUrl(raw),host=target.hostname.replace(/^\[|\]$/g,"").toLowerCase();if(host.endsWith(".internal")||host.endsWith(".lan")||host.endsWith(".home")||host.endsWith(".test"))throw new Error("Internal hostnames are blocked.");
  const lookups=await Promise.all(["A","AAAA"].map(async type=>{
   const response=await fetch("https://cloudflare-dns.com/dns-query?name="+encodeURIComponent(host)+"&type="+type,{headers:{"accept":"application/dns-json"}});
   if(!response.ok)throw new Error("Could not validate public DNS for the target hostname.");
