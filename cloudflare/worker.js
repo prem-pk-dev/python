@@ -253,8 +253,10 @@ if(ingestMatch&&request.method==="POST"){
  const a=new TextEncoder().encode(expected),b=new TextEncoder().encode(provided);let diff=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)diff|=(a[i]||0)^(b[i]||0);
  if(!expected||diff!==0)return json({error:"Unauthorized ingest request."},401);
  const body=await request.clone().text();if(new TextEncoder().encode(body).length>950000)return json({error:"Ingest message exceeds the 950 KB relay limit."},413);
+ let event;try{event=JSON.parse(body)}catch{return json({error:"Ingest body must be valid JSON."},400)}
+ if(!event||typeof event!=="object"||Array.isArray(event)||event.crawl_id!==ingestMatch[1]||typeof event.type!=="string")return json({error:"Ingest crawl_id or event type does not match this session."},400);
  const stub=env.CRAWL_SESSION_HUB.get(env.CRAWL_SESSION_HUB.idFromName(ingestMatch[1]));
- return stub.fetch(new Request("https://crawl-hub/ingest",{method:"POST",headers:{"Content-Type":"application/json"},body}));
+ return stub.fetch(new Request("https://crawl-hub/ingest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(event)}));
 }
 if(!url.pathname.startsWith("/api/"))return new Response("Not found",{status:404});if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);try{if(url.pathname==="/api/scrape"&&request.method==="POST"){const body=await request.json();return json(await fetchPublic(publicUrl(body.url)))}if(url.pathname==="/api/run-hn"&&request.method==="POST"){await github("actions/workflows/scraper.yml/dispatches",env,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main"})});return json({accepted:true})}if(url.pathname==="/api/runs"&&request.method==="GET"){const r=await github("actions/workflows/scraper.yml/runs?per_page=8",env);const d=await r.json();return json({runs:(d.workflow_runs||[]).map(x=>({id:x.id,status:x.status,conclusion:x.conclusion,event:x.event,branch:x.head_branch,created_at:x.created_at}))})}return json({error:"API route not found."},404)}catch(e){return json({error:e.message||"Request failed."},400)}}};
 
