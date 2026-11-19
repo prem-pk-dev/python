@@ -234,10 +234,8 @@ if(url.pathname==="/api/crawl/start"&&request.method==="POST"){
   const pages=Number(body.max_pages);if(!Number.isInteger(pages)||pages<1||pages>100)return json({error:"max_pages must be an integer from 1 to 100."},400);
   const allowedDevices=["Desktop","Tablet","Mobile","Desktop,Tablet,Mobile"];if(!allowedDevices.includes(body.devices))return json({error:"Select Desktop, Tablet, Mobile, or all three devices."},400);
   const devices=body.devices;const mode=["viewport","full_page","both"].includes(body.screenshot_mode)?body.screenshot_mode:null;if(!mode)return json({error:"screenshot_mode must be viewport, full_page, or both."},400);
-  const crawlId=crypto.randomUUID();const stub=env.CRAWL_SESSION_HUB.get(env.CRAWL_SESSION_HUB.idFromName(crawlId));
-  await stub.fetch("https://crawl-hub/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({crawl_id:crawlId,url:target.href,max_pages:pages,devices,screenshot_mode:mode})});
-  try{await github("actions/workflows/visual-crawler.yml/dispatches",env,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main",inputs:{crawl_id:crawlId,target_url:target.href,max_pages:String(pages),devices,screenshot_mode:mode}})})}
-  catch(e){await stub.fetch("https://crawl-hub/clear",{method:"POST"});throw e}
+  const crawlId=crypto.randomUUID();
+  await github("actions/workflows/visual-crawler.yml/dispatches",env,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main",inputs:{crawl_id:crawlId,target_url:target.href,max_pages:String(pages),devices,screenshot_mode:mode}})});
   return json({accepted:true,crawl_id:crawlId,ws_url:(url.protocol==="https:"?"wss:":"ws:")+"//"+url.host+"/api/crawl/"+crawlId+"/ws",ws_token:await createWsToken(crawlId,env.DASHBOARD_PASSWORD),message:"Live visual crawl dispatched."});
  }catch(e){return json({error:e.message||"Could not start crawl."},400)}
 }
@@ -263,23 +261,20 @@ if(!url.pathname.startsWith("/api/"))return new Response("Not found",{status:404
 
 /** Volatile WebSocket relay only. No storage API is called. */
 export class CrawlSessionHub {
- constructor(state, env) { this.state=state; this.env=env; this.clients=new Set(); this.session=null; }
- dropClient(socket) { this.clients.delete(socket); if(this.clients.size===0)this.session=null; }
+ constructor(state, env) { this.clients=new Set(); }
+ dropClient(socket) { this.clients.delete(socket); }
  async fetch(request) {
   const url=new URL(request.url);
-  if(url.pathname==="/init"&&request.method==="POST"){this.session=await request.json();return new Response("ok");}
-  if(url.pathname==="/clear"&&request.method==="POST"){for(const ws of this.clients){try{ws.close(1000,"session cleared")}catch{}}this.clients.clear();this.session=null;return new Response("cleared");}
   if(url.pathname==="/connect"&&request.method==="GET"){
    const pair=new WebSocketPair();const client=pair[0],server=pair[1];server.accept();this.clients.add(server);
    server.addEventListener("close",()=>this.dropClient(server));server.addEventListener("error",()=>this.dropClient(server));
-   server.send(JSON.stringify({type:"connected",crawl_id:this.session?.crawl_id||null,timestamp:Date.now(),message:"Connected to volatile in-memory relay."}));
+   server.send(JSON.stringify({type:"connected",timestamp:Date.now(),message:"Connected to volatile in-memory relay."}));
    return new Response(null,{status:101,webSocket:client});
   }
   if(url.pathname==="/ingest"&&request.method==="POST"){
    const raw=await request.text();if(new TextEncoder().encode(raw).length>950000)return new Response("too large",{status:413});
    if(!this.clients.size)return new Response("no connected clients; event discarded",{status:202});
    let event;try{event=JSON.parse(raw)}catch{return new Response("invalid JSON",{status:400})}
-   if(this.session&&event.crawl_id!==this.session.crawl_id)return new Response("crawl ID mismatch",{status:403});
    const message=JSON.stringify(event);
    for(const ws of [...this.clients]){try{if(ws.readyState===1)ws.send(message);else this.dropClient(ws)}catch{this.dropClient(ws)}}
    return new Response("relayed",{status:202});
