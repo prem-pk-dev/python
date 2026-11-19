@@ -51,6 +51,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install playwright httpx pillow
           python -m playwright install --with-deps chromium
+      - name: Validate Cloudflare Worker JavaScript syntax
+        run: node --input-type=module --check < cloudflare/worker.js
       - name: Validate crawler Python syntax
         run: python -m py_compile scripts/visual_crawler.py
       - name: Run RAM-only live visual crawler
@@ -66,3 +68,16 @@ jobs:
           test -n "$INGEST_SECRET" || (echo "INGEST_SECRET secret is missing" && exit 1)
           test -n "$WORKER_BASE_URL" || (echo "WORKER_BASE_URL repository variable is missing" && exit 1)
           python scripts/visual_crawler.py --crawl-id "$CRAWL_ID" --url "$TARGET_URL" --max-pages "$MAX_PAGES" --devices "$DEVICES" --screenshot-mode "$SCREENSHOT_MODE"
+      - name: Report runner failure to live session
+        if: ${{ failure() || cancelled() }}
+        env:
+          CRAWL_ID: ${{ inputs.crawl_id }}
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL }}
+        run: |
+          if [ -n "$INGEST_SECRET" ] && [ -n "$WORKER_BASE_URL" ]; then
+            curl --silent --show-error --max-time 10 -X POST "$WORKER_BASE_URL/api/crawl/$CRAWL_ID/ingest" \
+              -H "Authorization: Bearer $INGEST_SECRET" \
+              -H "Content-Type: application/json" \
+              --data "{\"crawl_id\":\"$CRAWL_ID\",\"type\":\"failed\",\"message\":\"GitHub Actions crawler runner failed or was cancelled\"}" || true
+          fi
