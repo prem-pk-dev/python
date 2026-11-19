@@ -27,11 +27,11 @@ jobs:
             const source = fs.readFileSync("cloudflare/worker.js", "utf8");
             const marker = "const HTML = String.raw`";
             const start = source.indexOf(marker);
-            const boundary = source.indexOf("\\nconst cors", start);
-            if (start < 0 || boundary < 0) throw new Error("Dashboard HTML template boundary not found");
+            if (start < 0) throw new Error("Dashboard HTML template not found");
             const contentStart = start + marker.length;
+            const boundary = source.indexOf("const cors", contentStart);
             const end = source.lastIndexOf("`", boundary);
-            if (end < contentStart) throw new Error("Dashboard HTML template is not terminated");
+            if (boundary < 0 || end < contentStart) throw new Error("Dashboard HTML template boundary not found");
             const html = source.slice(contentStart, end);
             const scriptStart = html.indexOf("<script>");
             const scriptEnd = html.indexOf("</script>", scriptStart);
