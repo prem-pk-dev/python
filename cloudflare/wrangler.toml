@@ -9,4 +9,4 @@ class_name = "CrawlSessionHub"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["CrawlSessionHub"]
+new_classes = ["CrawlSessionHub"]
