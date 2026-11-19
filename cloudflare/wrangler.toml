@@ -9,4 +9,6 @@ class_name = "CrawlSessionHub"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["CrawlSessionHub"]
+# SQLite-backed namespace is required for Workers Free compatibility.
+# Application code intentionally performs no state.storage or SQL operations.
+new_sqlite_classes = ["CrawlSessionHub"]
