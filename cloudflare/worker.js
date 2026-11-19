@@ -64,7 +64,7 @@ function releaseCrawlMemory(){
  for(const shot of liveShots){try{URL.revokeObjectURL(shot.objectUrl)}catch{}}
  liveShots=[];
  if(stageObjectUrl){URL.revokeObjectURL(stageObjectUrl);stageObjectUrl=null}
- $('liveFrame').removeAttribute('src');$('liveGallery').innerHTML='<div id="liveEmpty">Screenshots will appear here as the live crawl runs.</div>';
+ $('liveFrame').removeAttribute('src');$('liveLightbox').classList.remove('open');$('lightboxImage').removeAttribute('src');$('liveGallery').innerHTML='<div id="liveEmpty">Screenshots will appear here as the live crawl runs.</div>';
  $('shotCount').textContent='(0)';$('downloadAllBtn').disabled=true;
  window.removeEventListener('beforeunload',crawlUnsavedGuard);
 }
@@ -112,6 +112,7 @@ function receiveCrawlEvent(event){
  if(event.url)$('liveUrl').textContent=event.url;
  if(event.device)$('liveDevice').textContent=event.device;
  if(event.page){$('livePage').textContent='Page '+event.page+' of '+(event.total||livePageTotal||'?');}
+ if(type==='opening_url'){$('liveHttp').textContent='HTTP —';$('liveHttp').className='live-pill'}
  if(type==='opening_url'||type==='booting'){
   $('liveBoot').style.display='block';
   $('liveBoot').innerHTML='<strong>Booting Chromium Runner…</strong>'+(event.message||'Launching Chromium. Live frames will appear shortly.');
@@ -136,6 +137,7 @@ function receiveCrawlEvent(event){
   liveDone=Math.max(liveDone,event.page||0);$('liveProgress').style.width=Math.min(100,liveDone/Math.max(1,event.total||livePageTotal)*100)+'%';
  }
  if(type==='completed'||type==='failed'){
+  if(type==='completed'){$('liveProgress').style.width='100%';if(event.pages_completed)$('livePage').textContent='Page '+event.pages_completed+' of '+event.pages_completed}
   $('crawlStatus').textContent=type==='completed'?'Live crawl completed · '+liveShots.length+' screenshots in browser memory.':'Live crawl failed.';
   if(activeCrawlSocket){const socket=activeCrawlSocket;activeCrawlSocket=null;setTimeout(()=>{try{socket.close()}catch{}},800)}
   $('crawlBtn').disabled=false;
