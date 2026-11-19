@@ -56,7 +56,129 @@ $('scrapeBtn').onclick=async()=>{const b=$('scrapeBtn');b.disabled=true;$('scrap
 $('downloadBtn').onclick=()=>{if(!lastResult)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(lastResult,null,2)],{type:'application/json'}));a.download='website-scrape-result.json';a.click();URL.revokeObjectURL(a.href)};
 $('runBtn').onclick=async()=>{const b=$('runBtn');b.disabled=true;$('runStatus').textContent='Sending workflow dispatch…';try{await api('/api/run-hn',{method:'POST',body:'{}'});$('runStatus').textContent='Workflow dispatch accepted. Refresh history in a few seconds.';setTimeout(loadRuns,4000)}catch(e){$('runStatus').textContent=e.message}finally{b.disabled=false}};
 async function loadRuns(){$('historyStatus').textContent='Loading…';try{const d=await api('/api/runs');$('historyList').innerHTML='';$('metricRuns').textContent=String(d.runs.length);const activity=$('activity');if(!lastResult)activity.innerHTML='';for(const r of d.runs){const el=document.createElement('div');el.className='run';const strong=document.createElement('strong');strong.textContent='#'+r.id+' · '+r.status+' · '+(r.conclusion||'in progress');const sub=document.createElement('span');sub.className='muted';sub.textContent=r.event+' · '+r.branch+' · '+new Date(r.created_at).toLocaleString();el.append(strong,sub);$('historyList').append(el);if(activity.children.length<4){const ai=document.createElement('div');ai.className='activityitem';const dot=document.createElement('span');dot.className='activitydot';dot.textContent=r.conclusion==='success'?'✓':r.conclusion==='failure'?'!':'◷';const body=document.createElement('div');const title=document.createElement('strong');title.textContent='Hacker News · '+(r.conclusion||r.status);const detail=document.createElement('small');detail.textContent='#'+r.id+' · '+new Date(r.created_at).toLocaleString();body.append(title,detail);ai.append(dot,body);activity.append(ai)}}$('historyStatus').textContent=d.runs.length+' recent runs'}catch(e){$('historyStatus').textContent=e.message;$('metricRuns').textContent='Unavailable'}}
-$('crawlBtn').onclick=async()=>{const b=$('crawlBtn');b.disabled=true;$('crawlStatus').textContent='Dispatching Playwright crawler…';try{const d=await api('/api/run-crawl',{method:'POST',body:JSON.stringify({url:$('crawlUrl').value,max_pages:$('crawlPages').value,devices:$('crawlDevices').value,capture:$('crawlCapture').value})});$('crawlStatus').textContent=d.message;setTimeout(loadCrawlRuns,5000)}catch(e){$('crawlStatus').textContent=e.message}finally{b.disabled=false}};async function loadCrawlRuns(){$('crawlStatus').textContent='Loading crawl history…';try{const d=await api('/api/crawl-runs');$('crawlRuns').innerHTML='';for(const r of d.runs){const el=document.createElement('div');el.className='run';const strong=document.createElement('strong');strong.textContent='Run #'+r.id+' · '+r.status+' · '+(r.conclusion||'in progress');const sub=document.createElement('span');sub.className='muted';sub.textContent=new Date(r.created_at).toLocaleString();el.append(strong,sub);const a=document.createElement('a');a.href=r.url;a.target='_blank';a.rel='noopener';a.textContent='Open run details / download artifacts ↗';a.style.cssText='display:block;color:#6beaff;margin-top:8px';el.append(a);if(r.artifacts.length){const art=document.createElement('div');art.className='muted';art.textContent='Artifacts: '+r.artifacts.map(x=>x.name+(x.expired?' (expired)':'')).join(', ');el.append(art)}$('crawlRuns').append(el)}$('crawlStatus').textContent=d.runs.length+' recent visual crawl runs'}catch(e){$('crawlStatus').textContent=e.message}}$('crawlRefreshBtn').onclick=loadCrawlRuns;$('refreshBtn').onclick=loadRuns;
+
+/* RAM-only live crawl client */
+let activeCrawlSocket=null,activeCrawlId=null,liveShots=[],stageObjectUrl=null,livePageTotal=0,liveDone=0;
+function crawlUnsavedGuard(event){if(liveShots.length){event.preventDefault();event.returnValue='This live session has unsaved screenshots. Leaving will clear them.';return event.returnValue}}
+function releaseCrawlMemory(){
+ for(const shot of liveShots){try{URL.revokeObjectURL(shot.objectUrl)}catch{}}
+ liveShots=[];
+ if(stageObjectUrl){URL.revokeObjectURL(stageObjectUrl);stageObjectUrl=null}
+ $('liveFrame').removeAttribute('src');$('liveGallery').innerHTML='<div id="liveEmpty">Screenshots will appear here as the live crawl runs.</div>';
+ $('shotCount').textContent='(0)';$('downloadAllBtn').disabled=true;
+ window.removeEventListener('beforeunload',crawlUnsavedGuard);
+}
+function addCrawlLog(message,level='info',stamp=Date.now()){
+ const row=document.createElement('div');row.className='live-log '+level;
+ const time=document.createElement('span');time.className='time';time.textContent=new Date(stamp).toLocaleTimeString();
+ row.append(time,document.createTextNode(message));$('liveLogs').append(row);$('liveLogs').scrollTop=$('liveLogs').scrollHeight;
+}
+function base64Blob(data,mime){
+ const raw=atob(data),bytes=new Uint8Array(raw.length);
+ for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+ return new Blob([bytes],{type:mime||'image/jpeg'});
+}
+function safeFileName(value){return (value||'screenshot').toLowerCase().replace(/^https?:\/\//,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,65)||'screenshot'}
+function downloadBlob(blob,name){
+ const href=URL.createObjectURL(blob),a=document.createElement('a');a.href=href;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(href),1500);
+}
+function renderShotFilters(){
+ const device=$('filterDevice').value,mode=$('filterMode').value;
+ const visible=liveShots.filter(x=>(device==='all'||x.device===device)&&(mode==='all'||x.mode===mode));
+ $('liveGallery').innerHTML='';
+ if(!visible.length){const empty=document.createElement('div');empty.id='liveEmpty';empty.textContent=liveShots.length?'No screenshots match these filters.':'Screenshots will appear here as Playwright captures them.';$('liveGallery').append(empty)}
+ for(const shot of visible){
+  const card=document.createElement('div');card.className='shot-card';
+  const preview=document.createElement('div');preview.className='shot-preview';
+  const img=document.createElement('img');img.src=shot.objectUrl;img.alt=shot.device+' '+shot.mode+' screenshot';preview.append(img);
+  preview.onclick=()=>{$('lightboxImage').src=shot.objectUrl;$('liveLightbox').classList.add('open')};
+  const info=document.createElement('div');info.className='shot-info';
+  const url=document.createElement('div');url.className='shot-url';url.textContent=shot.url;
+  const meta=document.createElement('div');meta.className='shot-meta';
+  for(const label of ['Page '+shot.page,shot.device,shot.mode==='full_page'?'Full Page':'Viewport']){const tag=document.createElement('span');tag.textContent=label;meta.append(tag)}
+  const status=document.createElement('span');status.className=shot.ui_status==='pass'?'pass':'warning';status.textContent='UI '+(shot.ui_status||'unknown');meta.append(status);
+  const actions=document.createElement('div');actions.className='shot-actions';
+  const view=document.createElement('button');view.className='btn secondary';view.textContent='Preview';view.onclick=preview.onclick;
+  const down=document.createElement('button');down.className='btn';down.textContent='↓ Download';down.onclick=()=>downloadBlob(shot.blob,shot.filename);
+  actions.append(view,down);info.append(url,meta,actions);card.append(preview,info);$('liveGallery').append(card);
+ }
+ $('shotCount').textContent='('+liveShots.length+')';$('downloadAllBtn').disabled=!liveShots.length;
+ if(liveShots.length)window.addEventListener('beforeunload',crawlUnsavedGuard);
+}
+function receiveCrawlEvent(event){
+ const type=event.type||'event',stamp=event.timestamp||Date.now();
+ const message=event.message||type.replaceAll('_',' ');
+ addCrawlLog(message,event.level==='error'||type==='failed'?'error':event.level==='warning'?'warn':type==='completed'?'success':'info',stamp);
+ if(event.url)$('liveUrl').textContent=event.url;
+ if(event.device)$('liveDevice').textContent=event.device;
+ if(event.page){$('livePage').textContent='Page '+event.page+' of '+(event.total||livePageTotal||'?');}
+ if(type==='opening_url'||type==='booting'){
+  $('liveBoot').style.display='block';
+  $('liveBoot').innerHTML='<strong>Booting Chromium Runner…</strong>'+(event.message||'Launching Chromium. Live frames will appear shortly.');
+ }
+ if(type==='frame'){
+  try{const blob=base64Blob(event.image,event.mime),next=URL.createObjectURL(blob);if(stageObjectUrl)URL.revokeObjectURL(stageObjectUrl);stageObjectUrl=next;$('liveFrame').src=next;$('liveFrame').style.display='block';$('liveBoot').style.display='none'}catch(e){addCrawlLog('Could not render live frame: '+e.message,'warn')}
+ }
+ if(type==='screenshot'){
+  try{
+   const blob=base64Blob(event.image,event.mime),host=safeFileName(new URL(event.url).hostname);
+   const name=host+'-page'+event.page+'-'+String(event.device||'desktop').toLowerCase()+'-'+event.mode+'.jpg';
+   liveShots.push({blob,objectUrl:URL.createObjectURL(blob),filename:name,url:event.url,page:event.page,device:event.device,mode:event.mode,ui_status:event.ui_status||'warning'});
+   renderShotFilters();
+  }catch(e){addCrawlLog('Screenshot render failed: '+e.message,'error')}
+ }
+ if(type==='ui_checks'){
+  const c=event.checks||{},rows=[['HTTP status',c.http_status??'—'],['Load time',(c.load_time_ms??'—')+' ms'],['Console errors',c.console_error_count??(c.console_errors||[]).length],['Broken images',c.broken_images??'—'],['Horizontal overflow',c.horizontal_overflow?'Yes':'No']];
+  $('liveChecks').textContent='';for(const pair of rows){const line=document.createElement('div');line.textContent=pair[0]+': '+pair[1];$('liveChecks').append(line)}
+ }
+ if(type==='page_done'){
+  if(event.status){$('liveHttp').textContent='HTTP '+event.status;$('liveHttp').className='live-pill '+(event.status>=200&&event.status<400?'good':'bad')}
+  liveDone=Math.max(liveDone,event.page||0);$('liveProgress').style.width=Math.min(100,liveDone/Math.max(1,event.total||livePageTotal)*100)+'%';
+ }
+ if(type==='completed'||type==='failed'){
+  $('crawlStatus').textContent=type==='completed'?'Live crawl completed · '+liveShots.length+' screenshots in browser memory.':'Live crawl failed.';
+  if(activeCrawlSocket){const socket=activeCrawlSocket;activeCrawlSocket=null;setTimeout(()=>{try{socket.close()}catch{}},800)}
+  $('crawlBtn').disabled=false;
+ }
+}
+$('filterDevice').onchange=renderShotFilters;$('filterMode').onchange=renderShotFilters;
+$('closeLightbox').onclick=()=>{$('liveLightbox').classList.remove('open');$('lightboxImage').removeAttribute('src')};
+$('liveLightbox').onclick=e=>{if(e.target===$('liveLightbox'))$('closeLightbox').click()};
+$('clearCrawlBtn').onclick=()=>{
+ if(activeCrawlSocket){try{activeCrawlSocket.close()}catch{}activeCrawlSocket=null}
+ releaseCrawlMemory();activeCrawlId=null;liveDone=0;livePageTotal=0;
+ $('liveLogs').innerHTML='';$('liveChecks').textContent='Session cleared.';
+ $('liveBoot').style.display='block';$('liveBoot').innerHTML='<strong>Live session cleared</strong>All screenshot Blob URLs have been revoked.';
+ $('liveFrame').style.display='none';$('liveHttp').textContent='HTTP —';$('liveDevice').textContent='Desktop';$('livePage').textContent='Page 0 of 0';$('liveProgress').style.width='0%';$('liveUrl').textContent='No active crawl session';$('crawlStatus').textContent='Session cleared from browser memory.';
+};
+$('downloadAllBtn').onclick=async()=>{
+ if(!liveShots.length)return;
+ if(!window.JSZip){addCrawlLog('ZIP library is unavailable; use individual downloads.','error');return}
+ const b=$('downloadAllBtn');b.disabled=true;b.textContent='Packing ZIP…';
+ try{const zip=new JSZip();for(const shot of liveShots)zip.file(shot.filename,shot.blob);const blob=await zip.generateAsync({type:'blob',compression:'STORE'});downloadBlob(blob,'visual-crawl-'+(activeCrawlId||'session')+'.zip');addCrawlLog('Created client-side ZIP from '+liveShots.length+' in-memory screenshots.','success')}
+ catch(e){addCrawlLog('ZIP creation failed: '+e.message,'error')}
+ finally{b.disabled=false;b.textContent='↓ Download All (.zip)'}
+};
+async function startLiveCrawl(){
+ const b=$('crawlBtn');b.disabled=true;releaseCrawlMemory();liveDone=0;livePageTotal=Math.max(1,Number($('crawlPages').value)||1);
+ $('liveLogs').innerHTML='';$('liveChecks').textContent='Waiting for first page…';$('liveBoot').style.display='block';
+ $('liveBoot').innerHTML='<strong>Booting Chromium Runner…</strong>GitHub Actions runner is starting. This commonly takes 15–30 seconds.';
+ $('liveFrame').style.display='none';$('liveProgress').style.width='0%';$('liveHttp').textContent='HTTP —';$('livePage').textContent='Page 0 of '+livePageTotal;addCrawlLog('Dispatching live Playwright crawl…');
+ try{
+  const d=await api('/api/crawl/start',{method:'POST',body:JSON.stringify({url:$('crawlUrl').value,max_pages:Number($('crawlPages').value),devices:$('crawlDevices').value,screenshot_mode:$('crawlCapture').value})});
+  activeCrawlId=d.crawl_id;
+  const socketUrl=d.ws_url+'?token='+encodeURIComponent(token);activeCrawlSocket=new WebSocket(socketUrl);
+  activeCrawlSocket.onopen=()=>addCrawlLog('Connected to in-memory CrawlSessionHub relay.','success');
+  activeCrawlSocket.onmessage=message=>{try{receiveCrawlEvent(JSON.parse(message.data))}catch(e){addCrawlLog('Invalid stream message: '+e.message,'error')}};
+  activeCrawlSocket.onerror=()=>addCrawlLog('Live WebSocket connection error.','error');
+  activeCrawlSocket.onclose=()=>{if(activeCrawlSocket!==null){activeCrawlSocket=null;addCrawlLog('Live connection closed.','warn');$('crawlBtn').disabled=false}};
+  $('crawlStatus').textContent='Crawl '+d.crawl_id+' dispatched. Connecting to live browser…';
+ }catch(e){$('crawlStatus').textContent=e.message;addCrawlLog('Could not start crawl: '+e.message,'error');b.disabled=false}
+}
+$('crawlBtn').onclick=startLiveCrawl;
+async function loadCrawlRuns(){$('crawlStatus').textContent='Live mode is active. Start a new crawl or clear the current session.'}
+$('crawlRefreshBtn').onclick=loadCrawlRuns;
+
 </script></body></html>`
 const cors = { "Access-Control-Allow-Origin": "same-origin", "Vary": "Origin" };
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}})}
