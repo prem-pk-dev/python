@@ -32,9 +32,11 @@ jobs:
             const end = source.indexOf("`;", contentStart);
             if (end < 0) throw new Error("Dashboard HTML template is not terminated");
             const html = source.slice(contentStart, end);
-            const scripts = [...html.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
-            if (scripts.length !== 1) throw new Error("Expected one inline dashboard script");
-            process.stdout.write(scripts[0][1]);
+            const scriptStart = html.indexOf("<script>");
+            const scriptEnd = html.indexOf("</script>", scriptStart);
+            if (scriptStart < 0 || scriptEnd < 0) throw new Error("Inline dashboard script not found");
+            if (html.indexOf("<script>", scriptEnd + 9) >= 0) throw new Error("Unexpected additional inline script");
+            process.stdout.write(html.slice(scriptStart + 8, scriptEnd));
           ' > "$tmp"
           node --check "$tmp"
       - uses: actions/setup-python@v5
