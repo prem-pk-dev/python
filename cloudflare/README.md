@@ -7,11 +7,11 @@ The Worker serves the existing dashboard and authenticated APIs. The visual craw
 - `POST /api/crawl/start`: validates crawl parameters, creates a UUID session, dispatches `.github/workflows/visual-crawler.yml`, and returns the WebSocket URL.
 - `GET /api/crawl/:crawl_id/ws`: authenticated browser WebSocket connection.
 - `POST /api/crawl/:crawl_id/ingest`: accepts Python events only with `Authorization: Bearer <INGEST_SECRET>`.
-- `CrawlSessionHub`: forwards JSON events to connected browser sockets. It keeps only active WebSocket references in RAM and drops them when the last client disconnects.
+- `CrawlSessionHub`: forwards JSON events to connected browser sockets. It uses the Durable Objects WebSocket Hibernation API and reads only the runtime-managed active socket list; disconnected sockets are removed by the runtime.
 
 ## Zero-persistence behavior
 
-The application does not write crawl data, images, logs, or screenshots to R2, KV, D1, filesystem, GitHub Actions artifacts, or Durable Object storage APIs. The DO class never calls `state.storage`, SQL, or storage methods. Screenshots are JPEG-compressed in Python memory, streamed through the relay, and held as browser Blob URLs only. Refreshing/leaving the tab drops the browser session; `Clear Session` revokes all Blob URLs.
+The application does not write crawl data, images, logs, or screenshots to R2, KV, D1, filesystem, GitHub Actions artifacts, or Durable Object storage APIs. The DO class never calls `state.storage`, SQL, or persistent application-storage methods. Screenshots are JPEG-compressed in Python memory, streamed through the relay, and held as browser Blob URLs only. Refreshing/leaving the tab drops the browser session; `Clear Session` revokes all Blob URLs.
 
 **Cloudflare platform caveat:** Free-plan Durable Objects require a SQLite-backed namespace migration. The migration provisions the platform backend, but this application intentionally performs no SQLite or DO storage reads/writes. If the requirement means that no SQLite-backed namespace may even be provisioned, Cloudflare Free Durable Objects cannot satisfy that requirement.
 
