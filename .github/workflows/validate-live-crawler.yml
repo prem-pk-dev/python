@@ -16,6 +16,8 @@ jobs:
           node-version: "22"
       - name: Validate Worker module syntax
         run: node --input-type=module --check < cloudflare/worker.js
+      - name: Validate Wrangler bundle and Durable Object migration
+        run: npx wrangler deploy --dry-run --config cloudflare/wrangler.toml
       - name: Validate embedded dashboard JavaScript
         run: |
           node --input-type=module -e '
