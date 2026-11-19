@@ -167,7 +167,7 @@ async function startLiveCrawl(){
  try{
   const d=await api('/api/crawl/start',{method:'POST',body:JSON.stringify({url:$('crawlUrl').value,max_pages:Number($('crawlPages').value),devices:$('crawlDevices').value,screenshot_mode:$('crawlCapture').value})});
   activeCrawlId=d.crawl_id;
-  const socketUrl=d.ws_url+'?token='+encodeURIComponent(token);activeCrawlSocket=new WebSocket(socketUrl);
+  const socketUrl=d.ws_url+'?token='+encodeURIComponent(d.ws_token);activeCrawlSocket=new WebSocket(socketUrl);
   activeCrawlSocket.onopen=()=>addCrawlLog('Connected to in-memory CrawlSessionHub relay.','success');
   activeCrawlSocket.onmessage=message=>{try{receiveCrawlEvent(JSON.parse(message.data))}catch(e){addCrawlLog('Invalid stream message: '+e.message,'error')}};
   activeCrawlSocket.onerror=()=>addCrawlLog('Live WebSocket connection error.','error');
@@ -182,6 +182,8 @@ const cors = { "Access-Control-Allow-Origin": "same-origin", "Vary": "Origin" };
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}})}
 function b64url(bytes){return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_")}
 async function sign(payload,secret){const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);return b64url(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(payload)))}
+async function createWsToken(crawlId,secret){const payload=btoa(JSON.stringify({crawl_id:crawlId,exp:Date.now()+2*60*1000})).replace(/=/g,"").replace(/\\+/g,"-").replace(/\\//g,"_");return payload+"."+await sign(payload,secret)}
+async function verifyWsToken(token,crawlId,env){const [payload,sig]=String(token||"").split(".");if(!payload||!sig||!env.DASHBOARD_PASSWORD)return false;try{if(await sign(payload,env.DASHBOARD_PASSWORD)!==sig)return false;const data=JSON.parse(atob(payload.replace(/-/g,"+").replace(/_/g,"/")));return data.crawl_id===crawlId&&data.exp>Date.now()}catch{return false}}
 async function authorized(request,env){const h=request.headers.get("Authorization")||"";const token=h.startsWith("Bearer ")?h.slice(7):"";const [payload,sig]=token.split(".");if(!payload||!sig)return false;try{const expected=await sign(payload,env.DASHBOARD_PASSWORD);if(expected!==sig)return false;const data=JSON.parse(atob(payload.replace(/-/g,"+").replace(/_/g,"/")));return data.exp>Date.now()}catch{return false}}
 function decode(s){return (s||"").replace(/&nbsp;|&#160;|&#xA0;/gi," ").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&#(\\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([\\da-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16))).trim()}
 function meta(html,key,attr="property"){for(const m of html.matchAll(/<meta\b[^>]*>/gi)){const tag=m[0];const av=tag.match(new RegExp("\\b"+attr+"\\s*=\\s*[\"']([^\"']+)","i"))?.[1];if(av===key){const cv=tag.match(/\bcontent\s*=\s*[\"']([^\"']*)/i)?.[1]||"";return decode(cv)}}return ""}
@@ -206,13 +208,14 @@ if(url.pathname==="/api/crawl/start"&&request.method==="POST"){
   await stub.fetch("https://crawl-hub/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({crawl_id:crawlId,url:target.href,max_pages:pages,devices,screenshot_mode:mode})});
   try{await github("actions/workflows/visual-crawler.yml/dispatches",env,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main",inputs:{crawl_id:crawlId,target_url:target.href,max_pages:String(pages),devices,screenshot_mode:mode}})})}
   catch(e){await stub.fetch("https://crawl-hub/clear",{method:"POST"});throw e}
-  return json({accepted:true,crawl_id:crawlId,ws_url:(url.protocol==="https:"?"wss:":"ws:")+"//"+url.host+"/api/crawl/"+crawlId+"/ws",message:"Live visual crawl dispatched."});
+  return json({accepted:true,crawl_id:crawlId,ws_url:(url.protocol==="https:"?"wss:":"ws:")+"//"+url.host+"/api/crawl/"+crawlId+"/ws",ws_token:await createWsToken(crawlId,env.DASHBOARD_PASSWORD),message:"Live visual crawl dispatched."});
  }catch(e){return json({error:e.message||"Could not start crawl."},400)}
 }
 const wsMatch=url.pathname.match(/^\/api\/crawl\/([0-9a-f-]+)\/ws$/i);
 if(wsMatch&&request.headers.get("Upgrade")?.toLowerCase()==="websocket"){
- const tokenFromQuery=url.searchParams.get("token")||"";const authRequest=new Request(url.href,{headers:{"Authorization":"Bearer "+tokenFromQuery}});
- if(!await authorized(authRequest,env))return json({error:"Unauthorized WebSocket session."},401);
+ const tokenFromQuery=url.searchParams.get("token")||"";
+ if(!await verifyWsToken(tokenFromQuery,wsMatch[1],env))return json({error:"Unauthorized or expired WebSocket session."},401);
+ const origin=request.headers.get("Origin");if(origin&&new URL(origin).host!==url.host)return json({error:"WebSocket origin rejected."},403);
  const stub=env.CRAWL_SESSION_HUB.get(env.CRAWL_SESSION_HUB.idFromName(wsMatch[1]));
  return stub.fetch(new Request("https://crawl-hub/connect",request));
 }
