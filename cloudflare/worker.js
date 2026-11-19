@@ -106,6 +106,7 @@ function renderShotFilters(){
  if(liveShots.length)window.addEventListener('beforeunload',crawlUnsavedGuard);
 }
 function receiveCrawlEvent(event){
+ if(event.crawl_id&&event.crawl_id!==activeCrawlId)return;
  const type=event.type||'event',stamp=event.timestamp||Date.now();
  const message=event.message||type.replaceAll('_',' ');
  addCrawlLog(message,event.level==='error'||type==='failed'?'error':event.level==='warning'?'warn':type==='completed'?'success':'info',stamp);
