@@ -192,9 +192,9 @@ async def main():
                     preview_task = None
                     await emit(client, crawl_id, "opening_url", url=url, page=page_number, total=limit, device=selected[0], message=f"Navigating to {url}")
                     try:
+                        preview_task = asyncio.create_task(live_preview(client, crawl_id, page, {"url": url, "page": page_number, "device": selected[0]}))
                         response = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
                         await validate_public_url(page.url)
-                        preview_task = asyncio.create_task(live_preview(client, crawl_id, page, {"url": url, "page": page_number, "device": selected[0]}))
                         try:
                             await page.wait_for_load_state("networkidle", timeout=7000)
                         except Exception:
@@ -257,14 +257,19 @@ async def main():
                 await browser.close()
 
 
+async def report_failure(exc):
+    crawl_id = os.environ.get("CRAWL_ID", "unknown")
+    try:
+        async with httpx.AsyncClient() as client:
+            await emit(client, crawl_id, "failed", message=str(exc)[:500])
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as exc:
-        crawl_id = os.environ.get("CRAWL_ID", "unknown")
-        try:
-            asyncio.run(emit(httpx.AsyncClient(), crawl_id, "failed", message=str(exc)[:500]))
-        except Exception:
-            pass
+        asyncio.run(report_failure(exc))
         print(f"Crawl failed: {exc}", file=sys.stderr)
         raise
