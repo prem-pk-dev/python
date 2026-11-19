@@ -222,12 +222,23 @@ async def main():
                             "document_width": discovered["documentWidth"],
                         }
                         await emit(client, crawl_id, "capturing", url=url, page=page_number, total=limit, device=selected[0], message=f"Capturing {url}")
+                        checks["devices"] = {}
                         for device in selected:
                             await page.set_viewport_size(DEVICES[device])
                             await page.wait_for_timeout(250)
+                            device_metrics = await page.evaluate("""() => ({
+                              broken_images: [...document.images].filter(i => i.complete && i.naturalWidth === 0).length,
+                              horizontal_overflow: document.documentElement.scrollWidth > innerWidth,
+                              viewport_width: innerWidth,
+                              document_width: document.documentElement.scrollWidth
+                            })""")
+                            checks["devices"][device] = device_metrics
                             for mode in (("viewport", "full_page") if args.screenshot_mode == "both" else (args.screenshot_mode,)):
                                 await emit(client, crawl_id, "capturing", url=url, page=page_number, total=limit, device=device, mode=mode, message=f"Capturing {device} {mode}")
-                                await capture_screenshot(client, crawl_id, page, url, page_number, device, mode, "pass" if checks["http_ok"] and not checks["horizontal_overflow"] and not checks["broken_images"] and not checks["console_error_count"] else "warning")
+                                ui_status = "pass" if checks["http_ok"] and not device_metrics["horizontal_overflow"] and not device_metrics["broken_images"] and not checks["console_error_count"] else "warning"
+                                await capture_screenshot(client, crawl_id, page, url, page_number, device, mode, ui_status)
+                        checks["horizontal_overflow"] = any(item["horizontal_overflow"] for item in checks["devices"].values())
+                        checks["broken_images"] = max((item["broken_images"] for item in checks["devices"].values()), default=0)
                         await emit(client, crawl_id, "ui_checks", url=url, page=page_number, checks=checks)
                         for candidate in discovered["links"]:
                             try:
