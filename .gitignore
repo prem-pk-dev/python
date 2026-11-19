@@ -6,3 +6,4 @@ venv/
 service-account*.json
 .pytest_cache/
 .coverage
+visual-crawl-output/
