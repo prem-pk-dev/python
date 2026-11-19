@@ -196,16 +196,18 @@ async function fetchPublic(url){let current=url;for(let i=0;i<4;i++){const res=a
 async function github(path,env,options={}){const r=await fetch("https://api.github.com/repos/prem-pk-dev/python/"+path,{...options,headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+env.GITHUB_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"python-scraper-dashboard",...(options.headers||{})}});if(!r.ok)throw new Error("GitHub API returned HTTP "+r.status+": "+(await r.text()).slice(0,350));return r}
 export default {async fetch(request,env){const url=new URL(request.url);if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,Authorization"}});if(url.pathname==="/"&&request.method==="GET")return new Response(HTML,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"strict-origin-when-cross-origin","X-Frame-Options":"DENY","Content-Security-Policy":"default-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self' wss:; base-uri 'none'; frame-ancestors 'none'"}});if(url.pathname==="/api/login"&&request.method==="POST"){try{const body=await request.json();if(!env.DASHBOARD_PASSWORD||body.password!==env.DASHBOARD_PASSWORD)return json({error:"Incorrect password."},401);const payload=btoa(JSON.stringify({exp:Date.now()+12*60*60*1000})).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");return json({token:payload+"."+await sign(payload,env.DASHBOARD_PASSWORD)})}catch{return json({error:"Invalid sign-in request."},400)}}
 if(url.pathname==="/api/crawl/start"&&request.method==="POST"){
- if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);
- const body=await request.json();let target;try{target=publicUrl(body.url)}catch(e){return json({error:e.message},400)}
- const pages=Number(body.max_pages);if(!Number.isInteger(pages)||pages<1||pages>100)return json({error:"max_pages must be an integer from 1 to 100."},400);
- const devices=["Desktop","Tablet","Mobile","Desktop,Tablet,Mobile"].includes(body.devices)?body.devices:"Desktop,Tablet,Mobile";
- const mode=["viewport","full_page","both"].includes(body.screenshot_mode)?body.screenshot_mode:null;if(!mode)return json({error:"screenshot_mode must be viewport, full_page, or both."},400);
- const crawlId=crypto.randomUUID();const stub=env.CRAWL_SESSION_HUB.get(env.CRAWL_SESSION_HUB.idFromName(crawlId));
- await stub.fetch("https://crawl-hub/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({crawl_id:crawlId,url:target.href,max_pages:pages,devices,screenshot_mode:mode})});
- try{await github("actions/workflows/visual-crawler.yml/dispatches",env,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main",inputs:{crawl_id:crawlId,target_url:target.href,max_pages:String(pages),devices,screenshot_mode:mode}})})}
- catch(e){await stub.fetch("https://crawl-hub/clear",{method:"POST"});throw e}
- return json({accepted:true,crawl_id:crawlId,ws_url:(url.protocol==="https:"?"wss:":"ws:")+"//"+url.host+"/api/crawl/"+crawlId+"/ws",message:"Live visual crawl dispatched."});
+ try{
+  if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);
+  const body=await request.json();let target;try{target=publicUrl(body.url)}catch(e){return json({error:e.message},400)}
+  const pages=Number(body.max_pages);if(!Number.isInteger(pages)||pages<1||pages>100)return json({error:"max_pages must be an integer from 1 to 100."},400);
+  const allowedDevices=["Desktop","Tablet","Mobile","Desktop,Tablet,Mobile"];if(!allowedDevices.includes(body.devices))return json({error:"Select Desktop, Tablet, Mobile, or all three devices."},400);
+  const devices=body.devices;const mode=["viewport","full_page","both"].includes(body.screenshot_mode)?body.screenshot_mode:null;if(!mode)return json({error:"screenshot_mode must be viewport, full_page, or both."},400);
+  const crawlId=crypto.randomUUID();const stub=env.CRAWL_SESSION_HUB.get(env.CRAWL_SESSION_HUB.idFromName(crawlId));
+  await stub.fetch("https://crawl-hub/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({crawl_id:crawlId,url:target.href,max_pages:pages,devices,screenshot_mode:mode})});
+  try{await github("actions/workflows/visual-crawler.yml/dispatches",env,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main",inputs:{crawl_id:crawlId,target_url:target.href,max_pages:String(pages),devices,screenshot_mode:mode}})})}
+  catch(e){await stub.fetch("https://crawl-hub/clear",{method:"POST"});throw e}
+  return json({accepted:true,crawl_id:crawlId,ws_url:(url.protocol==="https:"?"wss:":"ws:")+"//"+url.host+"/api/crawl/"+crawlId+"/ws",message:"Live visual crawl dispatched."});
+ }catch(e){return json({error:e.message||"Could not start crawl."},400)}
 }
 const wsMatch=url.pathname.match(/^\/api\/crawl\/([0-9a-f-]+)\/ws$/i);
 if(wsMatch&&request.headers.get("Upgrade")?.toLowerCase()==="websocket"){
