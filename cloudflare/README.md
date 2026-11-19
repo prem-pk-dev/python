@@ -7,7 +7,7 @@ The Worker serves the existing dashboard and authenticated APIs. The visual craw
 - `POST /api/crawl/start`: validates crawl parameters, creates a UUID session, dispatches `.github/workflows/visual-crawler.yml`, and returns the WebSocket URL.
 - `GET /api/crawl/:crawl_id/ws`: authenticated browser WebSocket connection.
 - `POST /api/crawl/:crawl_id/ingest`: accepts Python events only with `Authorization: Bearer <INGEST_SECRET>`.
-- `CrawlSessionHub`: forwards JSON events to connected browser sockets. It keeps only volatile in-memory session/socket references and clears them when the last client disconnects.
+- `CrawlSessionHub`: forwards JSON events to connected browser sockets. It keeps only active WebSocket references in RAM and drops them when the last client disconnects.
 
 ## Zero-persistence behavior
 
