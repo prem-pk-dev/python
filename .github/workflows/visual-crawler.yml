@@ -2,6 +2,10 @@ name: Visual Website Crawler (Playwright)
 on:
   workflow_dispatch:
     inputs:
+      crawl_id:
+        description: Live dashboard session ID
+        required: true
+        type: string
       target_url:
         description: Public website URL to crawl
         required: true
@@ -12,22 +16,25 @@ on:
         default: "50"
         type: string
       devices:
-        description: Screenshot device profiles
+        description: Device profiles
         required: true
-        default: all
+        default: "Desktop,Tablet,Mobile"
         type: choice
-        options: [desktop, mobile, all]
-      capture:
-        description: Screenshot type
+        options:
+          - "Desktop"
+          - "Tablet"
+          - "Mobile"
+          - "Desktop,Tablet,Mobile"
+      screenshot_mode:
+        description: Screenshot capture mode
         required: true
         default: both
         type: choice
-        options: [full, viewport, both]
+        options: [viewport, full_page, both]
 permissions:
   contents: read
-  actions: read
 concurrency:
-  group: visual-crawl-${{ github.run_id }}
+  group: visual-crawl-${{ github.event.inputs.crawl_id }}
   cancel-in-progress: false
 jobs:
   crawl:
@@ -35,29 +42,27 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install Playwright
+      - name: Install Playwright and image encoder
         run: |
           python -m pip install --upgrade pip
-          pip install playwright
+          pip install playwright httpx pillow
           python -m playwright install --with-deps chromium
       - name: Validate crawler Python syntax
         run: python -m py_compile scripts/visual_crawler.py
-      - name: Run visual crawler
+      - name: Run RAM-only live visual crawler
         env:
+          CRAWL_ID: ${{ inputs.crawl_id }}
           TARGET_URL: ${{ inputs.target_url }}
           MAX_PAGES: ${{ inputs.max_pages }}
           DEVICES: ${{ inputs.devices }}
-          CAPTURE: ${{ inputs.capture }}
+          SCREENSHOT_MODE: ${{ inputs.screenshot_mode }}
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL }}
         run: |
-          python scripts/visual_crawler.py --url "$TARGET_URL" --max-pages "$MAX_PAGES" --devices "$DEVICES" --capture "$CAPTURE"
-      - name: Upload screenshots and reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-crawl-${{ github.run_id }}
-          path: visual-crawl-output/
-          if-no-files-found: warn
-          retention-days: 7
+          test -n "$INGEST_SECRET" || (echo "INGEST_SECRET secret is missing" && exit 1)
+          test -n "$WORKER_BASE_URL" || (echo "WORKER_BASE_URL repository variable is missing" && exit 1)
+          python scripts/visual_crawler.py --crawl-id "$CRAWL_ID" --url "$TARGET_URL" --max-pages "$MAX_PAGES" --devices "$DEVICES" --screenshot-mode "$SCREENSHOT_MODE"
