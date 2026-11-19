@@ -193,6 +193,34 @@ function findClassText(html,tag,className){const re=new RegExp("<"+tag+"\\b(?=[^
 function findClassTag(html,tag,className){const re=new RegExp("<"+tag+"\\b(?=[^>]*\\bclass=[\"'][^\"']*\\b"+className+"\\b[^\"']*[\"'])[^>]*>","i");return html.match(re)?.[0]||""}
 function attrValue(tag,name){return decode(tag.match(new RegExp("\\b"+name+"\\s*=\\s*[\"']([^\"']*)","i"))?.[1]||"")}
 function extract(html,url,status){const title=decode(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||"");const desc=meta(html,"description","name")||meta(html,"og:description");let image=meta(html,"og:image")||meta(html,"twitter:image","name");const canonical=decode(html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)/i)?.[1]||url);let product={};for(const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)){try{const parsed=JSON.parse(m[1]);const stack=[parsed];while(stack.length){const x=stack.pop();if(Array.isArray(x)){stack.push(...x);continue}if(x&&typeof x==="object"){const t=Array.isArray(x["@type"])?x["@type"]:[x["@type"]];if(t.includes("Product")){product=x;break}stack.push(...Object.values(x))}}if(product.name)break}catch{}}let offers=Array.isArray(product.offers)?product.offers[0]:product.offers||{};let productName=product.name||cleanText(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]||"");let price=offers.price??"";let currency=offers.priceCurrency||"";let availability=(offers.availability||"").split("/").pop();let priceText=findClassText(html,"p","price_color");if(!price&&priceText){price=priceText;const symbol=(priceText.match(/[£$€]/)||[])[0];currency=symbol==="£"?"GBP":symbol==="$"?"USD":symbol==="€"?"EUR":""}if(!availability)availability=findClassText(html,"p","availability");if(!image){const img=findClassTag(html,"img","thumbnail")||html.match(/<img[^>]+>/i)?.[0]||"";const src=attrValue(img,"src")||attrValue(img,"data-src");if(src)image=new URL(src,url).href}let productDescription="";const marker=html.search(/id=["']product_description["']/i);if(marker>=0){const section=html.slice(marker);const p=section.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);if(p)productDescription=collapseRepeatedPrefix(cleanText(p[1]))}if(!productDescription){const candidates=[...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>cleanText(m[1])).filter(t=>t.length>100&&!/customer reviews|write a review|availability|price/i.test(t));productDescription=collapseRepeatedPrefix(candidates[0]||"")}const description=productDescription||collapseRepeatedPrefix(product.description||desc||"");const seen=new Set();let paragraphs=[...html.matchAll(/<(?:p|h1|h2|h3)\b[^>]*>([\s\S]*?)<\/(?:p|h1|h2|h3)>/gi)].map(m=>collapseRepeatedPrefix(cleanText(m[1]))).filter(x=>x.length>35&&!/customer reviews|write a review|add to basket|add to cart/i.test(x)).filter(x=>{const key=x.toLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,12);return {url,title:title||productName||"Untitled page",description,image,canonical,site_name:meta(html,"og:site_name"),published:meta(html,"article:published_time")||meta(html,"date","name"),author:meta(html,"author","name"),product_name:productName,price,currency,availability,paragraphs,status_code:status}}
+function nonPublicAddress(value){
+ const ip=String(value||"").toLowerCase().replace(/^\[|\]$/g,"");
+ if(ip.includes(".")){
+  const parts=ip.split(".").map(Number);
+  if(parts.length===4&&parts.every(n=>Number.isInteger(n)&&n>=0&&n<=255)){
+   const [a,b,c]=parts;
+   return a===0||a===10||a===127||a>=224||(a===100&&b>=64&&b<=127)||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&(b===168||(b===0&&(c===0||c===2))||(b===88&&c===99)))||(a===198&&(b===18||b===19||(b===51&&c===100)))||(a===203&&b===0&&c===113);
+  }
+ }
+ if(ip.includes(":")){
+  if(ip==="::"||ip==="::1"||ip.startsWith("fc")||ip.startsWith("fd")||ip.startsWith("fe8")||ip.startsWith("fe9")||ip.startsWith("fea")||ip.startsWith("feb")||ip.startsWith("ff")||ip.startsWith("2001:db8"))return true;
+  const mapped=ip.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);if(mapped)return nonPublicAddress(mapped[1]);
+  const first=parseInt(ip.split(":")[0]||"0",16);return !(first>=0x2000&&first<=0x3fff);
+ }
+ return true;
+}
+async function publicCrawlUrl(raw){
+ const target=publicUrl(raw),host=target.hostname.replace(/^\[|\]$/g,"").toLowerCase();
+ const lookups=await Promise.all(["A","AAAA"].map(async type=>{
+  const response=await fetch("https://cloudflare-dns.com/dns-query?name="+encodeURIComponent(host)+"&type="+type,{headers:{"accept":"application/dns-json"}});
+  if(!response.ok)throw new Error("Could not validate public DNS for the target hostname.");
+  const data=await response.json();if(data.Status!==0&&data.Status!==3)throw new Error("DNS validation failed for the target hostname.");
+  return (data.Answer||[]).filter(answer=>answer.type===1||answer.type===28).map(answer=>answer.data);
+ }));
+ const addresses=lookups.flat();if(!addresses.length)throw new Error("Target hostname has no public DNS address.");
+ if(addresses.some(nonPublicAddress))throw new Error("Target hostname resolves to a private or reserved IP range.");
+ return target;
+}
 function publicUrl(raw){let u;try{u=new URL(raw)}catch{throw new Error("Enter a valid complete website URL.")}if(!["http:","https:"].includes(u.protocol)||u.username||u.password)throw new Error("Only public HTTP/HTTPS URLs without embedded credentials are accepted.");const h=u.hostname.toLowerCase();if(h==="localhost"||h.endsWith(".localhost")||h.endsWith(".local")||h==="metadata.google.internal"||/^\d{1,3}(\.\d{1,3}){3}$/.test(h)||h.includes(":")||!h.includes("."))throw new Error("Local, IP-literal and internal hostnames are blocked.");return u}
 async function fetchPublic(url){let current=url;for(let i=0;i<4;i++){const res=await fetch(current,{redirect:"manual",headers:{"User-Agent":"Mozilla/5.0 (compatible; PythonScraperDashboard/1.0)","Accept":"text/html,application/xhtml+xml"}});if([301,302,303,307,308].includes(res.status)){const loc=res.headers.get("Location");if(!loc)throw new Error("Website redirect had no Location header.");current=publicUrl(new URL(loc,current).href);continue}if(!res.ok)throw new Error("Website returned HTTP "+res.status);const type=res.headers.get("Content-Type")||"";if(!type.toLowerCase().includes("html"))throw new Error("URL did not return an HTML webpage.");const len=Number(res.headers.get("Content-Length")||0);if(len>5_000_000)throw new Error("Page exceeds the 5 MB safety limit.");const html=await res.text();if(new TextEncoder().encode(html).length>5_000_000)throw new Error("Page exceeds the 5 MB safety limit.");return extract(html,current.href,res.status)}throw new Error("Too many redirects.")}
 async function github(path,env,options={}){const r=await fetch("https://api.github.com/repos/prem-pk-dev/python/"+path,{...options,headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+env.GITHUB_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"python-scraper-dashboard",...(options.headers||{})}});if(!r.ok)throw new Error("GitHub API returned HTTP "+r.status+": "+(await r.text()).slice(0,350));return r}
@@ -200,7 +228,7 @@ export default {async fetch(request,env){const url=new URL(request.url);if(reque
 if(url.pathname==="/api/crawl/start"&&request.method==="POST"){
  try{
   if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);
-  const body=await request.json();let target;try{target=publicUrl(body.url)}catch(e){return json({error:e.message},400)}
+  const body=await request.json();let target;try{target=await publicCrawlUrl(body.url)}catch(e){return json({error:e.message},400)}
   const pages=Number(body.max_pages);if(!Number.isInteger(pages)||pages<1||pages>100)return json({error:"max_pages must be an integer from 1 to 100."},400);
   const allowedDevices=["Desktop","Tablet","Mobile","Desktop,Tablet,Mobile"];if(!allowedDevices.includes(body.devices))return json({error:"Select Desktop, Tablet, Mobile, or all three devices."},400);
   const devices=body.devices;const mode=["viewport","full_page","both"].includes(body.screenshot_mode)?body.screenshot_mode:null;if(!mode)return json({error:"screenshot_mode must be viewport, full_page, or both."},400);
