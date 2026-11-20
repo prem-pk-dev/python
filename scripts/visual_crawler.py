@@ -108,9 +108,9 @@ def compact_image(raw, max_bytes=MAX_IMAGE_BYTES, max_height=5000):
     raise ValueError("Screenshot could not be reduced below the live-frame size limit.")
 
 
-async def send_image(client, crawl_id, page, event_type, **metadata):
+async def send_image(client, crawl_id, browser_page, event_type, **metadata):
     try:
-        raw = await page.screenshot(type="jpeg", quality=55, full_page=False, animations="disabled", timeout=5000)
+        raw = await browser_page.screenshot(type="jpeg", quality=55, full_page=False, animations="disabled", timeout=5000)
         data = compact_image(raw)
         await emit(client, crawl_id, event_type, image=base64.b64encode(data).decode("ascii"), mime="image/jpeg", **metadata)
     except Exception as exc:
