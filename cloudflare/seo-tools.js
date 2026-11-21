@@ -24,12 +24,7 @@ function readBoundedText(response, limit) {
   })();
 }
 
-export async function fetchPublicText(raw, {
-  publicUrl,
-  publicCrawlUrl,
-  fetchImpl = fetch,
-  limit = 1000000
-}) {
+export async function fetchPublicText(raw, { publicUrl, publicCrawlUrl, fetchImpl = fetch, limit = 1000000 }) {
   let current = publicUrl(raw);
   for (let i = 0; i < 4; i++) {
     await publicCrawlUrl(current.href);
@@ -46,44 +41,31 @@ export async function fetchPublicText(raw, {
       current = publicUrl(new URL(location, current).href);
       continue;
     }
-    return {
-      url: current.href,
-      status: response.status,
-      content_type: response.headers.get("Content-Type") || "",
-      text: await readBoundedText(response, limit)
-    };
+    return { url: current.href, status: response.status, content_type: response.headers.get("Content-Type") || "", text: await readBoundedText(response, limit) };
   }
   throw new Error("Too many redirects.");
 }
 
-export function auditSeo(html, url, status, {
-  decode,
-  meta,
-  attrValue,
-  findTagMatches,
-  cleanText
-}) {
-  const title = decode(html.match(/<title\\b[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1] || "");
+export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMatches, cleanText }) {
+  const title = decode(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
   const description = meta(html, "description", "name");
   let canonical = "";
-  for (const match of html.matchAll(/<link\\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi)) {
+  for (const match of html.matchAll(/<link\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi)) {
     const tag = match[0];
-    if (attrValue(tag, "rel").toLowerCase().split(/\\s+/).includes("canonical")) {
+    if (attrValue(tag, "rel").toLowerCase().split(/\s+/).includes("canonical")) {
       canonical = attrValue(tag, "href");
       break;
     }
   }
-  if (canonical) {
-    try { canonical = new URL(canonical, url).href; } catch {}
-  }
+  if (canonical) { try { canonical = new URL(canonical, url).href; } catch {} }
   const h1 = findTagMatches(html, "h1").map(match => cleanText(match[3])).filter(Boolean);
-  const images = [...html.matchAll(/<img\\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi)].map(match => match[0]);
+  const images = [...html.matchAll(/<img\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi)].map(match => match[0]);
   const missingAlt = images.filter(tag => !attrValue(tag, "alt").trim()).length;
   const viewport = !!meta(html, "viewport", "name");
   const ogTitle = !!meta(html, "og:title");
   const ogDescription = !!meta(html, "og:description");
   const ogImage = !!meta(html, "og:image");
-  const schema = /<script\\b[^>]*type\\s*=\\s*["']application\\/ld\\+json["']/i.test(html);
+  const schema = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["']/i.test(html);
   const robots = meta(html, "robots", "name");
   const checks = [
     { label: "Page title", status: title.length >= 30 && title.length <= 60 ? "pass" : title ? "warn" : "fail", detail: title ? title.length + " characters (recommended 30–60)" : "Missing title" },
@@ -100,33 +82,28 @@ export function auditSeo(html, url, status, {
 }
 
 export function parseSitemapLocs(xml, decode) {
-  return [...xml.matchAll(/<loc\\b[^>]*>([\\s\\S]*?)<\\/loc>/gi)]
-    .map(match => decode(match[1].replace(/<!\\[CDATA\\[|\\]\\]>/g, "").trim()))
+  return [...xml.matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)]
+    .map(match => decode(match[1].replace(/<!\[CDATA\[|\]\]>/g, "").trim()))
     .filter(Boolean);
 }
 
-export async function inspectSiteDiscovery(raw, {
-  publicCrawlUrl,
-  fetchPublicText,
-  decode
-}) {
+export async function inspectSiteDiscovery(raw, { publicCrawlUrl, fetchPublicText, decode }) {
   const target = await publicCrawlUrl(raw);
   const origin = target.origin;
   const robots = await fetchPublicText(new URL("/robots.txt", origin).href, 250000);
   const rules = [];
   const sitemapRefs = [];
   let agent = "*";
-  for (const line of robots.text.split(/\\r?\\n/)) {
+  for (const line of robots.text.split(/\r?\n/)) {
     const clean = line.replace(/#.*$/, "").trim();
     if (!clean) continue;
-    const match = clean.match(/^(user-agent|allow|disallow|sitemap)\\s*:\\s*(.*)$/i);
+    const match = clean.match(/^(user-agent|allow|disallow|sitemap)\s*:\s*(.*)$/i);
     if (!match) continue;
     const key = match[1].toLowerCase();
     const value = match[2].trim();
     if (key === "user-agent") agent = value;
-    else if (key === "sitemap") {
-      try { sitemapRefs.push(new URL(value, origin).href); } catch {}
-    } else rules.push({ agent, rule: key.toUpperCase() + ": " + (value || "(empty)") });
+    else if (key === "sitemap") { try { sitemapRefs.push(new URL(value, origin).href); } catch {} }
+    else rules.push({ agent, rule: key.toUpperCase() + ": " + (value || "(empty)") });
   }
   if (!sitemapRefs.length) sitemapRefs.push(new URL("/sitemap.xml", origin).href);
   const sitemaps = [];
@@ -146,7 +123,7 @@ export async function inspectSiteDiscovery(raw, {
     sitemaps.push({ url: parsed.url, status: parsed.status });
     if (parsed.status < 200 || parsed.status >= 300) continue;
     const locations = parseSitemapLocs(parsed.text, decode);
-    if (/<sitemapindex\\b/i.test(parsed.text)) {
+    if (/<sitemapindex\b/i.test(parsed.text)) {
       for (const location of locations) {
         try {
           const child = new URL(location);
@@ -165,13 +142,5 @@ export async function inspectSiteDiscovery(raw, {
       }
     }
   }
-  return {
-    site: origin,
-    robots_url: robots.url,
-    robots_status: robots.status,
-    robots_rules: rules,
-    sitemaps,
-    urls,
-    limits: { max_sitemap_files: 4, max_urls: 100 }
-  };
+  return { site: origin, robots_url: robots.url, robots_status: robots.status, robots_rules: rules, sitemaps, urls, limits: { max_sitemap_files: 4, max_urls: 100 } };
 }
