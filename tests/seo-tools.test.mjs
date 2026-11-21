@@ -6,25 +6,25 @@ function decode(value) {
   return String(value || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').trim();
 }
 function attrValue(tag, name) {
-  return decode(tag.match(new RegExp("\\\\b" + name + "\\\\s*=\\\\s*['\\\"]([^'\\\"]*)", "i"))?.[1] || "");
+  return decode(tag.match(new RegExp("\\b" + name + "\\s*=\\s*['\"]([^'\"]*)", "i"))?.[1] || "");
 }
 function meta(html, key, attr = "property") {
-  for (const match of html.matchAll(/<meta\\b[^>]*>/gi)) {
+  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
     const tag = match[0];
-    const keyValue = tag.match(new RegExp("\\\\b" + attr + "=['\\\"]([^'\\\"]+)", "i"))?.[1];
+    const keyValue = tag.match(new RegExp("\\b" + attr + "=['\"]([^'\"]+)", "i"))?.[1];
     if (keyValue === key) return attrValue(tag, "content");
   }
   return "";
 }
 function findTagMatches(html, tags) {
-  const regex = new RegExp("<(" + tags + ")\\\\b((?:\\"[^\\"]*\\"|'[^']*'|[^'\\">])*)>([\\\\s\\\\S]*?)<\\\\/\\\\1\\\\s*>", "gi");
+  const regex = new RegExp("<(" + tags + ")\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>([\\s\\S]*?)<\\/\\1\\s*>", "gi");
   return [...html.matchAll(regex)];
 }
 function cleanText(value) {
-  return decode(value.replace(/<[^>]*>/g, " ").replace(/\\s+/g, " "));
+  return decode(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " "));
 }
 
-test("SEO audit reports useful checks and counts missing image alt attributes", () => {
+test("SEO audit reports checks and counts missing image alt attributes", () => {
   const html = '<title>Example site title that is long enough for search</title><meta name="description" content="A useful description that contains enough words and details to meet the recommended length for a search result snippet."><meta name="viewport" content="width=device-width"><meta property="og:title" content="Example"><meta property="og:description" content="Description"><meta property="og:image" content="/image.jpg"><link rel="canonical" href="/canonical"><h1>Heading</h1><img src="/a.jpg" alt="A"><img src="/b.jpg"><script type="application/ld+json">{}</script>';
   const result = auditSeo(html, "https://example.com/page", 200, { decode, meta, attrValue, findTagMatches, cleanText });
   assert.equal(result.status_code, 200);
@@ -68,11 +68,11 @@ test("bounded reader rejects oversized response bodies", async () => {
   }), /safety limit/);
 });
 
-test("sitemap discovery follows only same-host sitemap indexes and caps output", async () => {
+test("sitemap discovery follows only same-host sitemap indexes", async () => {
   const fetched = [];
   const fakeFetch = async (url) => {
     fetched.push(url);
-    if (url.endsWith("/robots.txt")) return { url, status: 200, text: "User-agent: *\\nDisallow: /private\\nSitemap: https://example.com/index.xml" };
+    if (url.endsWith("/robots.txt")) return { url, status: 200, text: "User-agent: *\nDisallow: /private\nSitemap: https://example.com/index.xml" };
     if (url.endsWith("/index.xml")) return { url, status: 200, text: "<sitemapindex><loc>https://example.com/child.xml</loc><loc>https://elsewhere.test/skip.xml</loc></sitemapindex>" };
     return { url, status: 200, text: "<urlset><loc>https://example.com/a</loc><loc>https://example.com/b</loc></urlset>" };
   };
