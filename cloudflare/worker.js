@@ -1,3 +1,4 @@
+import { auditSeo, fetchPublicText, inspectSiteDiscovery } from "./seo-tools.js";
 const HTML = String.raw`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#06101f"><title>Python Scraper · Automation Dashboard</title>
 <style>
@@ -233,65 +234,6 @@ async function publicCrawlUrl(raw){
 function publicUrl(raw){let u;try{u=new URL(raw)}catch{throw new Error("Enter a valid complete website URL.")}if(!["http:","https:"].includes(u.protocol)||u.username||u.password)throw new Error("Only public HTTP/HTTPS URLs without embedded credentials are accepted.");const h=u.hostname.toLowerCase();if(h==="localhost"||h.endsWith(".localhost")||h.endsWith(".local")||h==="metadata.google.internal"||/^\d{1,3}(\.\d{1,3}){3}$/.test(h)||h.includes(":")||!h.includes("."))throw new Error("Local, IP-literal and internal hostnames are blocked.");return u}
 async function fetchPublic(url){let current=url;for(let i=0;i<4;i++){const res=await fetch(current,{redirect:"manual",headers:{"User-Agent":"Mozilla/5.0 (compatible; PythonScraperDashboard/1.0)","Accept":"text/html,application/xhtml+xml"}});if([301,302,303,307,308].includes(res.status)){const loc=res.headers.get("Location");if(!loc)throw new Error("Website redirect had no Location header.");current=publicUrl(new URL(loc,current).href);continue}if(!res.ok)throw new Error("Website returned HTTP "+res.status);const type=res.headers.get("Content-Type")||"";if(!type.toLowerCase().includes("html"))throw new Error("URL did not return an HTML webpage.");const len=Number(res.headers.get("Content-Length")||0);if(len>5_000_000)throw new Error("Page exceeds the 5 MB safety limit.");const html=await res.text();if(new TextEncoder().encode(html).length>5_000_000)throw new Error("Page exceeds the 5 MB safety limit.");return extract(html,current.href,res.status)}throw new Error("Too many redirects.")}
 
-async function readBoundedText(response,limit=1000000){
- const reader=response.body?.getReader();if(!reader)return "";
- const chunks=[];let size=0;
- while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>limit){try{await reader.cancel()}catch{}throw new Error("Target response exceeds the "+Math.round(limit/1000)+" KB safety limit.")}chunks.push(part.value)}
- const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength}return new TextDecoder().decode(bytes);
-}
-async function fetchPublicText(raw,limit=1000000){
- let current=publicUrl(raw);
- for(let i=0;i<4;i++){
-  await publicCrawlUrl(current.href);
-  const res=await fetch(current,{redirect:"manual",headers:{"User-Agent":"Mozilla/5.0 (compatible; PythonScraperDashboard/1.0)","Accept":"text/html,application/xhtml+xml,application/xml,text/plain,*/*"}});
-  if([301,302,303,307,308].includes(res.status)){const loc=res.headers.get("Location");if(!loc)throw new Error("Website redirect had no Location header.");current=publicUrl(new URL(loc,current).href);continue}
-  return {url:current.href,status:res.status,content_type:res.headers.get("Content-Type")||"",text:await readBoundedText(res,limit)};
- }
- throw new Error("Too many redirects.");
-}
-function auditSeo(html,url,status){
- const title=decode(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]||"");
- const description=meta(html,"description","name");
- let canonical="";for(const m of html.matchAll(/<link\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi)){const tag=m[0];if(attrValue(tag,"rel").toLowerCase().split(/\s+/).includes("canonical")){canonical=attrValue(tag,"href");break}}
- if(canonical){try{canonical=new URL(canonical,url).href}catch{}}
- const h1=findTagMatches(html,"h1").map(m=>cleanText(m[3])).filter(Boolean);
- const images=[...html.matchAll(/<img\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi)].map(m=>m[0]);
- const missingAlt=images.filter(tag=>!attrValue(tag,"alt").trim()).length;
- const viewport=!!meta(html,"viewport","name"),ogTitle=!!meta(html,"og:title"),ogDescription=!!meta(html,"og:description"),ogImage=!!meta(html,"og:image");
- const schema=/<script\b[^>]*type\s*=\s*["']application\/ld\+json["']/i.test(html);
- const robots=meta(html,"robots","name");
- const checks=[
-  {label:"Page title",status:title.length>=30&&title.length<=60?"pass":title?"warn":"fail",detail:title?title.length+" characters (recommended 30–60)":"Missing title"},
-  {label:"Meta description",status:description.length>=70&&description.length<=160?"pass":description?"warn":"fail",detail:description?description.length+" characters (recommended 70–160)":"Missing description"},
-  {label:"H1 heading",status:h1.length===1?"pass":h1.length?"warn":"fail",detail:h1.length+" H1 elements"},
-  {label:"Canonical URL",status:canonical?"pass":"warn",detail:canonical||"No canonical link found"},
-  {label:"Viewport meta",status:viewport?"pass":"warn",detail:viewport?"Present":"Missing responsive viewport tag"},
-  {label:"Open Graph",status:ogTitle&&ogDescription&&ogImage?"pass":"warn",detail:[ogTitle?"title":"no title",ogDescription?"description":"no description",ogImage?"image":"no image"].join(" · ")},
-  {label:"Image alt text",status:missingAlt===0?"pass":"warn",detail:missingAlt+" of "+images.length+" images missing alt"},
-  {label:"Structured data",status:schema?"pass":"warn",detail:schema?"JSON-LD detected":"No JSON-LD script detected"}
- ];
- const score=Math.round(checks.reduce((sum,c)=>sum+(c.status==="pass"?12.5:c.status==="warn"?7:0),0));
- return {url,status_code:status,score,title,description,canonical,h1,images_count:images.length,images_missing_alt:missingAlt,robots_meta:robots,checks};
-}
-function parseSitemapLocs(xml){return [...xml.matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)].map(m=>decode(m[1].replace(/<!\[CDATA\[|\]\]>/g,"").trim())).filter(Boolean)}
-async function inspectSiteDiscovery(raw){
- const target=await publicCrawlUrl(raw),origin=target.origin;
- const robots=await fetchPublicText(new URL("/robots.txt",origin).href,250000);
- const rules=[],sitemapRefs=[];let agent="*";
- for(const line of robots.text.split(/\r?\n/)){const clean=line.replace(/#.*$/,"").trim();if(!clean)continue;const m=clean.match(/^(user-agent|allow|disallow|sitemap)\s*:\s*(.*)$/i);if(!m)continue;const key=m[1].toLowerCase(),value=m[2].trim();if(key==="user-agent")agent=value;else if(key==="sitemap"){try{sitemapRefs.push(new URL(value,origin).href)}catch{}}else rules.push({agent,rule:key.toUpperCase()+": "+(value||"(empty)")})}
- if(!sitemapRefs.length)sitemapRefs.push(new URL("/sitemap.xml",origin).href);
- const sitemaps=[],urls=[],visited=new Set();let queue=sitemapRefs.slice(0,3);
- while(queue.length&&sitemaps.length<4&&urls.length<100){
-  const sitemapUrl=queue.shift();if(visited.has(sitemapUrl))continue;visited.add(sitemapUrl);
-  let parsed;try{const u=new URL(sitemapUrl);if(u.hostname!==target.hostname)continue;parsed=await fetchPublicText(u.href,1000000)}catch{continue}
-  sitemaps.push({url:parsed.url,status:parsed.status});
-  if(parsed.status<200||parsed.status>=300)continue;
-  const locs=parseSitemapLocs(parsed.text);
-  if(/<sitemapindex\b/i.test(parsed.text)){for(const loc of locs){try{const child=new URL(loc);if(child.hostname===target.hostname&&!visited.has(child.href)&&queue.length<3)queue.push(child.href)}catch{}}}
-  else for(const loc of locs){try{const u=new URL(loc);if(["http:","https:"].includes(u.protocol)&&u.hostname===target.hostname&&!urls.includes(u.href)){urls.push(u.href);if(urls.length>=100)break}}catch{}}
- }
- return {site:origin,robots_url:robots.url,robots_status:robots.status,robots_rules:rules,sitemaps,urls,limits:{max_sitemap_files:4,max_urls:100}};
-}
 async function github(path,env,options={}){const r=await fetch("https://api.github.com/repos/prem-pk-dev/python/"+path,{...options,headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+env.GITHUB_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"python-scraper-dashboard",...(options.headers||{})}});if(!r.ok)throw new Error("GitHub API returned HTTP "+r.status+": "+(await r.text()).slice(0,350));return r}
 export default {async fetch(request,env){const url=new URL(request.url);if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,Authorization"}});if(url.pathname==="/"&&request.method==="GET")return new Response(HTML,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"strict-origin-when-cross-origin","X-Frame-Options":"DENY","Content-Security-Policy":"default-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self' wss:; base-uri 'none'; frame-ancestors 'none'"}});if(url.pathname==="/api/login"&&request.method==="POST"){try{const body=await request.json();if(!env.DASHBOARD_PASSWORD||body.password!==env.DASHBOARD_PASSWORD)return json({error:"Incorrect password."},401);const payload=btoa(JSON.stringify({exp:Date.now()+12*60*60*1000})).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");return json({token:payload+"."+await sign(payload,env.DASHBOARD_PASSWORD)})}catch{return json({error:"Invalid sign-in request."},400)}}
 if(url.pathname==="/api/crawl/start"&&request.method==="POST"){
@@ -328,14 +270,14 @@ if(ingestMatch&&request.method==="POST"){
 if(!url.pathname.startsWith("/api/"))return new Response("Not found",{status:404});if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);try{if(url.pathname==="/api/scrape"&&request.method==="POST"){const body=await request.json();return json(await fetchPublic(publicUrl(body.url)))}
 if(url.pathname==="/api/seo-audit"&&request.method==="POST"){
  if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);
- const body=await request.json(),page=await fetchPublicText(body.url,1000000);
+ const body=await request.json(),page=await fetchPublicText(body.url,{publicUrl,publicCrawlUrl});
  if(page.status<200||page.status>=300)throw new Error("Website returned HTTP "+page.status);
  if(!page.content_type.toLowerCase().includes("html"))throw new Error("URL did not return an HTML webpage.");
- return json(auditSeo(page.text,page.url,page.status));
+ return json(auditSeo(page.text,page.url,page.status,{decode,meta,attrValue,findTagMatches,cleanText}));
 }
 if(url.pathname==="/api/site-discovery"&&request.method==="POST"){
  if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);
- const body=await request.json();return json(await inspectSiteDiscovery(body.url));
+ const body=await request.json();return json(await inspectSiteDiscovery(body.url,{publicCrawlUrl,fetchPublicText:(raw,limit)=>fetchPublicText(raw,{publicUrl,publicCrawlUrl,limit}),decode}));
 }if(url.pathname==="/api/run-hn"&&request.method==="POST"){await github("actions/workflows/scraper.yml/dispatches",env,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main"})});return json({accepted:true})}if(url.pathname==="/api/runs"&&request.method==="GET"){const r=await github("actions/workflows/scraper.yml/runs?per_page=8",env);const d=await r.json();return json({runs:(d.workflow_runs||[]).map(x=>({id:x.id,status:x.status,conclusion:x.conclusion,event:x.event,branch:x.head_branch,created_at:x.created_at}))})}return json({error:"API route not found."},404)}catch(e){return json({error:e.message||"Request failed."},400)}}};
 
 
