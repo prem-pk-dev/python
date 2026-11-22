@@ -266,7 +266,18 @@ async def main():
     async with httpx.AsyncClient() as client:
         await emit(client, crawl_id, "booting", message="Launching Chromium runner", max_pages=limit, devices=selected)
         records = []
+        sitemap_urls, discovery_meta, robots_parser = await discover_sitemap_urls(client, start_url, limit)
+        if discovery_meta["robots_status"] and 200 <= discovery_meta["robots_status"] < 300 and not robots_parser.can_fetch("*", start_url):
+            raise ValueError("The requested start URL is disallowed by the site's robots.txt rules.")
         queue = deque([start_url])
+        for candidate in sitemap_urls:
+            if candidate != start_url and candidate not in queue:
+                queue.append(candidate)
+        discovered_urls = list(dict.fromkeys([start_url, *sitemap_urls]))[:limit]
+        discovered_set = set(discovered_urls)
+        await emit(client, crawl_id, "url_inventory", urls=discovered_urls, total=len(discovered_urls),
+                   truncated=len(sitemap_urls) >= limit, sources=["robots.txt", "sitemap.xml", "internal links"],
+                   discovery=discovery_meta, message=f"URL discovery seeded {len(discovered_urls)} same-site URLs")
         seen = set()
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
