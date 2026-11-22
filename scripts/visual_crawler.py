@@ -11,7 +11,6 @@ import socket
 import sys
 import time
 import gzip
-import xml.etree.ElementTree as ET
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
 from site_discovery import parse_sitemap_document, same_site_http_url
@@ -120,7 +119,7 @@ async def discover_sitemap_urls(client, start_url, limit):
             print(f"[discovery-warning] sitemap skipped {sitemap_url}: {str(exc)[:180]}", flush=True)
     return found, {"robots_status": robots_status, "sitemaps_read": sitemap_count,
                    "sitemap_limit": MAX_SITEMAP_FILES, "url_limit": limit,
-                   "sitemaps_truncated": bool(sitemap_queue), "url_limit_reached": len(found) >= limit,
+                   "sitemaps_truncated": bool(sitemap_queue), "url_limit_reached": bool(limit and len(found) >= limit),
                    "robots_url": robots_url}, robots_parser
 
 
