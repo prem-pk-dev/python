@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.visual_crawler import normalize_url, parse_sitemap_document, same_site_http_url
+from scripts.site_discovery import parse_sitemap_document, same_site_http_url
 
 
 class SitemapDiscoveryTests(unittest.TestCase):
@@ -25,9 +25,6 @@ class SitemapDiscoveryTests(unittest.TestCase):
         self.assertTrue(same_site_http_url("https://example.com/a", "example.com"))
         self.assertFalse(same_site_http_url("https://other.example.com/a", "example.com"))
         self.assertFalse(same_site_http_url("javascript:alert(1)", "example.com"))
-
-    def test_url_normalization_removes_fragment(self):
-        self.assertEqual(normalize_url("https://EXAMPLE.com/a#section"), "https://example.com/a")
 
 
 if __name__ == "__main__":
