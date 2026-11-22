@@ -344,41 +344,62 @@ if(token)showApp();else{document.querySelector('.shell').classList.add('hidden')
 $('scrapeBtn').onclick=async()=>{const b=$('scrapeBtn');b.disabled=true;$('scrapeStatus').textContent='Fetching and parsing page…';try{lastResult=await api('/api/scrape',{method:'POST',body:JSON.stringify({url:$('url').value,selector:$('cssSelector').value.trim()})});$('output').textContent=JSON.stringify(lastResult,null,2);$('downloadBtn').disabled=false;$('scrapeStatus').textContent='Completed · HTTP '+lastResult.status_code;$('scrapeCsvBtn').disabled=$('scrapeMdBtn').disabled=$('scrapePrintBtn').disabled=false;$('metricScrape').textContent='Completed';$('metricStatus').textContent='HTTP '+lastResult.status_code;$('activity').innerHTML='';const item=document.createElement('div');item.className='activityitem';item.innerHTML='<span class="activitydot"><img class="ui-icon" src="https://media-assets-4sb.pages.dev/icons/ui/circle-check.svg" alt="" aria-hidden="true"></span><div><strong></strong><small></small></div>';item.querySelector('strong').textContent=new URL(lastResult.url).hostname;item.querySelector('small').textContent='HTTP '+lastResult.status_code+' · Latest scrape';$('activity').append(item)}catch(e){$('scrapeStatus').textContent=e.message;$('metricScrape').textContent='Failed';$('metricStatus').textContent='Error'}finally{b.disabled=false}};
 $('downloadBtn').onclick=()=>{if(!lastResult)return;const a=document.createElement('a');const blobUrl=URL.createObjectURL(new Blob([JSON.stringify(lastResult,null,2)],{type:'application/json'}));a.href=blobUrl;a.download='website-scrape-result.json';a.click();setTimeout(()=>URL.revokeObjectURL(blobUrl),1000)};$('scrapeCsvBtn').onclick=()=>lastResult&&downloadCsv(lastResult,'website-scrape.csv');$('scrapeMdBtn').onclick=()=>lastResult&&downloadMd(lastResult,'website-scrape.md');$('scrapePrintBtn').onclick=()=>lastResult&&printReport('Website scrape',lastResult);
 $('runBtn').onclick=async()=>{loadHnNews();const b=$('runBtn');b.disabled=true;$('runStatus').textContent='Sending workflow dispatch…';try{await api('/api/run-hn',{method:'POST',body:'{}'});$('runStatus').textContent='Workflow dispatch accepted. Refresh history in a few seconds.';setTimeout(loadRuns,4000)}catch(e){$('runStatus').textContent=e.message}finally{b.disabled=false}};
-function hnRelativeTime(epoch){const seconds=Math.max(0,Math.floor(Date.now()/1000-Number(epoch||0)));if(seconds<60)return'just now';const mins=Math.floor(seconds/60);if(mins<60)return mins+' min ago';const hours=Math.floor(mins/60);if(hours<24)return hours+' hour'+(hours===1?'':'s')+' ago';const days=Math.floor(hours/24);if(days<30)return days+' day'+(days===1?'':'s')+' ago';return new Date(Number(epoch)*1000).toLocaleDateString()}
+function hnRelativeTime(epoch){const seconds=Math.max(0,Math.floor(Date.now()/1000-Number(epoch||0)));if(seconds<60)return'अभी';const mins=Math.floor(seconds/60);if(mins<60)return mins+' मिनट पहले';const hours=Math.floor(mins/60);if(hours<24)return hours+' घंटे पहले';const days=Math.floor(hours/24);if(days<30)return days+' दिन पहले';return new Date(Number(epoch)*1000).toLocaleDateString()}
 function hnDomain(story){try{return new URL(story.url||('https://news.ycombinator.com/item?id='+story.id)).hostname.replace(/^www\./,'')}catch{return'Hacker News'}}
+function hnText(story,field){return hnNewsLanguage==='hi'?(story[field+'_hi']||story[field]||''):(story[field]||'')}
 function renderHnNews(){
- const root=$('hnNewsGrid');if(!root)return;root.textContent='';
- const q=$('hnNewsSearch').value.trim().toLowerCase();
- const filtered=hnNewsItems.filter(item=>[item.title,item.text,item.by,hnDomain(item)].join(' ').toLowerCase().includes(q));
- if(!filtered.length){const empty=document.createElement('div');empty.id='hnNewsEmpty';empty.textContent=q?'No stories match “'+$('hnNewsSearch').value.trim()+'”.':'No stories are available in this category right now.';root.append(empty);return}
- filtered.forEach((story,index)=>{
-  const card=document.createElement('article');card.className='hn-news-card';
-  const top=document.createElement('div');top.className='hn-news-top';
-  const rank=document.createElement('span');rank.className='hn-rank';rank.textContent='#'+(hnNewsItems.indexOf(story)+1);
-  const points=document.createElement('span');points.className='hn-points';points.textContent='▲ '+Number(story.score||0).toLocaleString()+' pts';top.append(rank,points);
-  const title=document.createElement('h3');title.className='hn-news-title';const titleLink=document.createElement('a');titleLink.href=story.url||('https://news.ycombinator.com/item?id='+story.id);titleLink.target='_blank';titleLink.rel='noopener noreferrer';titleLink.textContent=story.title||'Untitled story';title.append(titleLink);
+ const root=$('hnNewsGrid');if(!root)return;root.textContent='';const q=$('hnNewsSearch').value.trim().toLowerCase();
+ const filtered=hnNewsItems.filter(item=>[item.title,item.title_hi,item.text,item.text_hi,item.by,hnDomain(item)].join(' ').toLowerCase().includes(q));
+ if(!filtered.length){const empty=document.createElement('div');empty.id='hnNewsEmpty';empty.textContent=q?'इस खोज से मेल खाती खबर नहीं मिली।':'इस श्रेणी में अभी खबरें उपलब्ध नहीं हैं।';root.append(empty);return}
+ filtered.forEach(story=>{
+  const card=document.createElement('article');card.className='hn-news-card';card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',(hnText(story,'title')||'खबर')+' — पूरा पढ़ें');
+  if(story.image){const image=document.createElement('img');image.className='hn-news-image';image.src=story.image;image.alt='';image.loading='lazy';image.referrerPolicy='no-referrer';image.onerror=()=>image.remove();card.append(image)}
+  const content=document.createElement('div');content.className='hn-news-content';
+  const top=document.createElement('div');top.className='hn-news-top';const rank=document.createElement('span');rank.className='hn-rank';rank.textContent='#'+(hnNewsItems.indexOf(story)+1);const points=document.createElement('span');points.className='hn-points';points.textContent='▲ '+Number(story.score||0).toLocaleString()+' अंक';top.append(rank,points);
+  const title=document.createElement('h3');title.className='hn-news-title';const titleButton=document.createElement('button');titleButton.type='button';titleButton.textContent=hnText(story,'title')||'शीर्षक उपलब्ध नहीं';title.append(titleButton);
   const domain=document.createElement('span');domain.className='hn-domain';domain.textContent=hnDomain(story);domain.title=domain.textContent;
-  const preview=document.createElement('div');preview.className='hn-story-preview';preview.textContent=story.text||'';if(!story.text)preview.hidden=true;
-  const meta=document.createElement('div');meta.className='hn-story-meta';meta.textContent=hnRelativeTime(story.time)+' · by '+(story.by||'unknown')+' · '+Number(story.descendants||0).toLocaleString()+' comments';
-  const actions=document.createElement('div');actions.className='hn-news-actions';
-  const article=document.createElement('a');article.href=story.url||('https://news.ycombinator.com/item?id='+story.id);article.target='_blank';article.rel='noopener noreferrer';article.textContent='Read Article ↗';
-  const discussion=document.createElement('a');discussion.className='secondary';discussion.href='https://news.ycombinator.com/item?id='+encodeURIComponent(story.id);discussion.target='_blank';discussion.rel='noopener noreferrer';discussion.textContent='Discussion';
-  actions.append(article,discussion);card.append(top,title,domain,preview,meta,actions);root.append(card);
+  const preview=document.createElement('div');preview.className='hn-story-preview';preview.textContent=hnText(story,'text');if(!preview.textContent)preview.hidden=true;
+  const meta=document.createElement('div');meta.className='hn-story-meta';meta.textContent=hnRelativeTime(story.time)+' · '+(story.by||'अज्ञात लेखक')+' · '+Number(story.descendants||0).toLocaleString()+' टिप्पणियाँ';
+  const actions=document.createElement('div');actions.className='hn-news-actions';const article=document.createElement('button');article.type='button';article.textContent='पूरा पढ़ें';const discussion=document.createElement('button');discussion.type='button';discussion.className='secondary';discussion.textContent='चर्चा';
+  const openArticle=()=>openHnReader(story.id,'article'),openDiscussion=()=>openHnReader(story.id,'discussion');
+  card.addEventListener('click',openArticle);card.addEventListener('keydown',e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openArticle()}});
+  titleButton.addEventListener('click',e=>{e.stopPropagation();openArticle()});article.addEventListener('click',e=>{e.stopPropagation();openArticle()});discussion.addEventListener('click',e=>{e.stopPropagation();openDiscussion()});
+  actions.append(article,discussion);content.append(top,title,domain,preview,meta,actions);card.append(content);root.append(card);
  });
 }
+function renderHnReader(){
+ const data=hnReaderData,root=$('hnReaderScroll');if(!data||!root)return;root.textContent='';
+ const hero=document.createElement('img');hero.className='hn-reader-hero';hero.alt='';hero.src=data.image||'';hero.hidden=!data.image;hero.onerror=()=>{hero.hidden=true};
+ const body=document.createElement('div');body.className='hn-reader-body';const title=document.createElement('h1');title.id='hnReaderTitle';title.textContent=hnNewsLanguage==='hi'?(data.title_hi||data.title||'समाचार'):(data.title||'News');
+ const meta=document.createElement('div');meta.className='hn-reader-meta';meta.textContent=(data.by?'लेखक: '+data.by+' · ':'')+(data.time?hnRelativeTime(data.time):'')+(data.domain?' · '+data.domain:'');
+ const copy=document.createElement('div');copy.className='hn-reader-copy';
+ if(hnReaderMode==='discussion'){
+  if(!data.comments?.length){const note=document.createElement('div');note.className='hn-reader-note';note.textContent='इस खबर पर अभी कोई सार्वजनिक टिप्पणी उपलब्ध नहीं है।';copy.append(note)}
+  (data.comments||[]).forEach(comment=>{const item=document.createElement('div');item.className='hn-comment';const small=document.createElement('small');small.textContent=(comment.by||'अज्ञात')+' · '+hnRelativeTime(comment.time);const paragraph=document.createElement('p');paragraph.textContent=hnNewsLanguage==='hi'?(comment.text_hi||comment.text||''):(comment.text||'');item.append(small,paragraph);copy.append(item)});
+ }else{
+  const paragraphs=hnNewsLanguage==='hi'?(data.paragraphs_hi||[]):(data.paragraphs||[]);
+  if(paragraphs.length)paragraphs.forEach(value=>{const p=document.createElement('p');p.textContent=value;copy.append(p)});
+  else{const summary=document.createElement('div');summary.className='hn-reader-note';summary.textContent=hnNewsLanguage==='hi'?(data.summary_hi||data.summary||'पूरा लेख उपलब्ध नहीं है। Hacker News से उपलब्ध जानकारी दिखाई जा रही है।'):(data.summary||'Full article is unavailable. Showing the available Hacker News summary.');copy.append(summary)}
+ }
+ body.append(title,meta,copy);root.append(hero,body);$('hnReaderModeLabel').textContent=hnReaderMode==='discussion'?'चर्चा':'इन-ऐप समाचार पाठक';$('hnLangHi').setAttribute('aria-pressed',String(hnNewsLanguage==='hi'));$('hnLangEn').setAttribute('aria-pressed',String(hnNewsLanguage==='en'));
+}
+async function openHnReader(id,mode){
+ hnReaderMode=mode;hnReaderData=null;$('hnReaderOverlay').classList.add('open');document.body.style.overflow='hidden';$('hnReaderScroll').innerHTML='<div class="hn-reader-loading">समाचार लोड हो रहा है…</div>';$('hnReaderModeLabel').textContent=mode==='discussion'?'चर्चा लोड हो रही है…':'लेख लोड हो रहा है…';
+ try{hnReaderData=await api('/api/news/read?id='+encodeURIComponent(id)+'&mode='+encodeURIComponent(mode));renderHnReader()}
+ catch(error){const root=$('hnReaderScroll');root.textContent='';const note=document.createElement('div');note.className='hn-reader-loading';note.textContent='यह सामग्री अभी लोड नहीं हो सकी: '+error.message;root.append(note)}
+}
+function closeHnReader(){$('hnReaderOverlay').classList.remove('open');document.body.style.overflow=''}
+$('hnReaderClose').addEventListener('click',closeHnReader);$('hnReaderOverlay').addEventListener('click',e=>{if(e.target===$('hnReaderOverlay'))closeHnReader()});
+$('hnLangHi').addEventListener('click',()=>{hnNewsLanguage='hi';renderHnNews();renderHnReader()});$('hnLangEn').addEventListener('click',()=>{hnNewsLanguage='en';renderHnNews();renderHnReader()});
 async function loadHnNews(){
  const requestId=++hnNewsRequest,button=$('hnRefreshBtn'),label=$('hnRefreshLabel'),status=$('hnFeedStatus'),root=$('hnNewsGrid');if(!root)return;
- if(button){button.disabled=true;label.textContent='⟳ Refreshing…'}
- status.textContent='Fetching latest Hacker News stories…';root.innerHTML='<div class="hn-skeleton"></div><div class="hn-skeleton"></div><div class="hn-skeleton"></div><div class="hn-skeleton"></div>';
- try{const data=await api('/api/news?category='+encodeURIComponent(hnNewsCategory));if(requestId!==hnNewsRequest)return;hnNewsItems=Array.isArray(data.stories)?data.stories:[];hnNewsLoadedAt=Date.now();renderHnNews();status.textContent=hnNewsItems.length+' stories · Updated '+new Date(hnNewsLoadedAt).toLocaleTimeString()}
- catch(error){if(requestId!==hnNewsRequest)return;root.textContent='';const empty=document.createElement('div');empty.id='hnNewsEmpty';empty.textContent='Could not load Hacker News: '+error.message;root.append(empty);status.textContent='Feed unavailable · Try Refresh News'}
- finally{if(requestId===hnNewsRequest&&button){button.disabled=false;label.textContent='↻ Refresh News'}}
+ if(button){button.disabled=true;label.textContent='लोड हो रहा है…'}status.textContent='ताज़ा खबरें प्राप्त की जा रही हैं…';root.innerHTML='<div class="hn-skeleton"></div><div class="hn-skeleton"></div><div class="hn-skeleton"></div><div class="hn-skeleton"></div>';
+ try{const data=await api('/api/news?category='+encodeURIComponent(hnNewsCategory));if(requestId!==hnNewsRequest)return;hnNewsItems=Array.isArray(data.stories)?data.stories:[];hnNewsLoadedAt=Date.now();renderHnNews();status.textContent=hnNewsItems.length+' खबरें · अपडेट '+new Date(hnNewsLoadedAt).toLocaleTimeString()}
+ catch(error){if(requestId!==hnNewsRequest)return;root.textContent='';const empty=document.createElement('div');empty.id='hnNewsEmpty';empty.textContent='खबरें लोड नहीं हो सकीं: '+error.message;root.append(empty);status.textContent='फीड उपलब्ध नहीं · फिर से कोशिश करें'}
+ finally{if(requestId===hnNewsRequest&&button){button.disabled=false;label.textContent='↻ खबरें रीफ़्रेश करें'}}
 }
 document.querySelectorAll('[data-hn-category]').forEach(tab=>tab.addEventListener('click',()=>{hnNewsCategory=tab.dataset.hnCategory;document.querySelectorAll('[data-hn-category]').forEach(item=>item.setAttribute('aria-selected',String(item===tab)));loadHnNews()}));
-$('hnNewsSearch').addEventListener('input',renderHnNews);
-$('hnRefreshBtn').addEventListener('click',loadHnNews);
-
-
+$('hnNewsSearch').addEventListener('input',renderHnNews);$('hnRefreshBtn').addEventListener('click',loadHnNews);
 const WEBHOOK_KEY='automation-webhook-url';$('webhookUrl').value=localStorage.getItem(WEBHOOK_KEY)||'';
 $('saveWebhookBtn').onclick=()=>{localStorage.setItem(WEBHOOK_KEY,$('webhookUrl').value.trim());$('webhookStatus').textContent='Saved in this browser.'};
 $('testWebhookBtn').onclick=async()=>{try{const url=$('webhookUrl').value.trim();if(!url)throw new Error('Enter a webhook URL');const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:'Automation Studio test alert',text:'Automation Studio test alert'}),mode:'cors'});if(!r.ok)throw new Error('HTTP '+r.status);$('webhookStatus').textContent='Test request sent.'}catch(e){$('webhookStatus').textContent='Could not confirm delivery: '+e.message+' (CORS may block browser webhooks).'}};
