@@ -381,7 +381,7 @@ function renderHnReader(){
   if(paragraphs.length)paragraphs.forEach(value=>{const p=document.createElement('p');p.textContent=value;copy.append(p)});
   else{const summary=document.createElement('div');summary.className='hn-reader-note';summary.textContent=hnNewsLanguage==='hi'?(data.summary_hi||data.summary||'पूरा लेख उपलब्ध नहीं है। Hacker News से उपलब्ध जानकारी दिखाई जा रही है।'):(data.summary||'Full article is unavailable. Showing the available Hacker News summary.');copy.append(summary)}
  }
- if(data.source_note){const note=document.createElement('div');note.className='hn-reader-note';note.textContent=hnNewsLanguage==='hi'?(data.source_note_hi||'स्रोत का पूरा लेख उपलब्ध नहीं है; Hacker News से उपलब्ध जानकारी दिखाई गई है।'):data.source_note;body.append(note)}body.append(title,meta,copy);root.append(hero,body);$('hnReaderModeLabel').textContent=hnReaderMode==='discussion'?'चर्चा':'इन-ऐप समाचार पाठक';$('hnLangHi').setAttribute('aria-pressed',String(hnNewsLanguage==='hi'));$('hnLangEn').setAttribute('aria-pressed',String(hnNewsLanguage==='en'));
+ body.append(title,meta);if(data.source_note){const note=document.createElement('div');note.className='hn-reader-note';note.textContent=hnNewsLanguage==='hi'?(data.source_note_hi||'स्रोत का पूरा लेख उपलब्ध नहीं है; Hacker News से उपलब्ध जानकारी दिखाई गई है।'):data.source_note;body.append(note)}body.append(copy);root.append(hero,body);$('hnReaderModeLabel').textContent=hnReaderMode==='discussion'?'चर्चा':'इन-ऐप समाचार पाठक';$('hnLangHi').setAttribute('aria-pressed',String(hnNewsLanguage==='hi'));$('hnLangEn').setAttribute('aria-pressed',String(hnNewsLanguage==='en'));
 }
 async function openHnReader(id,mode){
  hnReaderMode=mode;hnReaderData=null;$('hnReaderOverlay').classList.add('open');document.body.style.overflow='hidden';$('hnReaderScroll').innerHTML='<div class="hn-reader-loading">समाचार लोड हो रहा है…</div>';$('hnReaderModeLabel').textContent=mode==='discussion'?'चर्चा लोड हो रही है…':'लेख लोड हो रहा है…';
@@ -389,7 +389,7 @@ async function openHnReader(id,mode){
  catch(error){const root=$('hnReaderScroll');root.textContent='';const note=document.createElement('div');note.className='hn-reader-loading';note.textContent='यह सामग्री अभी लोड नहीं हो सकी: '+error.message;root.append(note)}
 }
 function closeHnReader(){$('hnReaderOverlay').classList.remove('open');document.body.style.overflow=''}
-$('hnReaderClose').addEventListener('click',closeHnReader);$('hnReaderOverlay').addEventListener('click',e=>{if(e.target===$('hnReaderOverlay'))closeHnReader()});
+$('hnReaderClose').addEventListener('click',closeHnReader);$('hnReaderOverlay').addEventListener('click',e=>{if(e.target===$('hnReaderOverlay'))closeHnReader()});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('hnReaderOverlay').classList.contains('open'))closeHnReader()});
 $('hnLangHi').addEventListener('click',()=>{hnNewsLanguage='hi';renderHnNews();renderHnReader()});$('hnLangEn').addEventListener('click',()=>{hnNewsLanguage='en';renderHnNews();renderHnReader()});
 async function loadHnNews(){
  const requestId=++hnNewsRequest,button=$('hnRefreshBtn'),label=$('hnRefreshLabel'),status=$('hnFeedStatus'),root=$('hnNewsGrid');if(!root)return;
