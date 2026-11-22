@@ -419,7 +419,7 @@ function receiveCrawlEvent(event){
   }catch(e){addCrawlLog('Screenshot render failed: '+e.message,'error')}
  }
  if(type==='ui_checks'){
-  const c=event.checks||{};if((c.broken_asset_count||0)>0)sendWebhookAlert('Broken assets detected',event),rows=[['HTTP status',c.http_status??'—'],['Load time',(c.load_time_ms??'—')+' ms'],['Total page size',(c.total_page_size_kb??'—')+' KB'],['Heavy images >500KB',c.heavy_image_count??0],['Broken assets 4xx/5xx',c.broken_asset_count??0],['Console errors',c.console_error_count??(c.console_errors||[]).length],['Broken images',c.broken_images??'—'],['Horizontal overflow',c.horizontal_overflow?'Yes':'No']];
+  const c=event.checks||{};if((c.http_status||0)>=400||(c.broken_asset_count||0)>0)sendWebhookAlert('HTTP or broken asset errors detected',event);const rows=[['HTTP status',c.http_status??'—'],['Load time',(c.load_time_ms??'—')+' ms'],['Total page size',(c.total_page_size_kb??'—')+' KB'],['Heavy images >500KB',c.heavy_image_count??0],['Broken assets 4xx/5xx',c.broken_asset_count??0],['Console errors',c.console_error_count??(c.console_errors||[]).length],['Broken images',c.broken_images??'—'],['Horizontal overflow',c.horizontal_overflow?'Yes':'No']];
   $('liveChecks').textContent='';for(const pair of rows){const line=document.createElement('div');line.textContent=pair[0]+': '+pair[1];$('liveChecks').append(line)}
  }
  if(type==='page_done'){
