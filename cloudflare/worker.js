@@ -505,15 +505,16 @@ function extractSelector(html,selector){
  if(selectors.length>8||String(selector).length>180)throw new Error("Use up to 8 simple CSS selectors.");
  const out=[],seen=new Set();
  for(const rawSel of selectors){
-  const sel=rawSel.split(/\\s+/).pop();
-  if(!/^(?:[a-z][\\w-]*|[.#][\\w-]+|[a-z][\\w-]*\\[[\\w:-]+(?:=[\\w-]+)?\\])$/i.test(sel))throw new Error("Supported selectors: tag, .class, #id, tag[attr], tag[attr=value].");
-  const tag=(sel.match(/^[a-z][\\w-]*/i)||[])[0]||"[a-z][\\w:-]*";
-  for(const m of html.matchAll(new RegExp("<("+tag+")\\\\b([^>]*)>([\\\\s\\\\S]*?)<\\\\/\\\\1\\\\s*>","gi"))){
+  const sel=rawSel.split(/\s+/).pop();
+  if(!/^(?:[a-z][\w-]*|[.#][\w-]+|[a-z][\w-]*\[[\w:-]+(?:=[\w-]+)?\])$/i.test(sel))throw new Error("Supported selectors: tag, .class, #id, tag[attr], tag[attr=value].");
+  const tag=(sel.match(/^[a-z][\w-]*/i)||[])[0]||"[a-z][\\w:-]*";
+  const matcher=new RegExp("<("+tag+")\\b([^>]*)>([\\s\\S]*?)<\\/\\1\\s*>","gi");
+  for(const m of html.matchAll(matcher)){
    if(rawSel.toLowerCase().startsWith("table ")&&html.lastIndexOf("<table",m.index)<html.lastIndexOf("</table",m.index))continue;
    const attrs=m[2],plain=cleanText(m[3]);
-   if(sel[0]==="."&&!new RegExp("class\\\\s*=\\\\s*[\"'][^\"']*\\\\b"+sel.slice(1)+"\\\\b").test(attrs))continue;
+   if(sel[0]==="."&&!new RegExp("class\\s*=\\s*[\"'][^\"']*\\b"+sel.slice(1)+"\\b").test(attrs))continue;
    if(sel[0]==="#"&&attrValue("<x "+attrs+">","id")!==sel.slice(1))continue;
-   const a=sel.match(/^([a-z][\\w-]*)?\\[([\\w:-]+)(?:=([\\w-]+))?\\]$/i);
+   const a=sel.match(/^([a-z][\w-]*)?\[([\w:-]+)(?:=([\w-]+))?\]$/i);
    if(a){const v=attrValue("<x "+attrs+">",a[2]);if(!v||(a[3]&&v!==a[3]))continue}
    if(seen.has(m[0]))continue;seen.add(m[0]);out.push({tag:m[1].toLowerCase(),text:plain,attributes:{class:attrValue("<x "+attrs+">","class"),id:attrValue("<x "+attrs+">","id"),href:attrValue("<x "+attrs+">","href"),src:attrValue("<x "+attrs+">","src")}});if(out.length>=200)return out;
   }
