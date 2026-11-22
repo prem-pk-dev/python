@@ -26,6 +26,7 @@ function readBoundedText(response, limit) {
 
 export async function fetchPublicText(raw, { publicUrl, publicCrawlUrl, fetchImpl = fetch, limit = 1000000 }) {
   let current = publicUrl(raw);
+  const redirects = [];
   for (let i = 0; i < 4; i++) {
     await publicCrawlUrl(current.href);
     const response = await fetchImpl(current, {
@@ -38,10 +39,11 @@ export async function fetchPublicText(raw, { publicUrl, publicCrawlUrl, fetchImp
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("Location");
       if (!location) throw new Error("Website redirect had no Location header.");
+      redirects.push({ status: response.status, from: current.href, to: new URL(location, current).href });
       current = publicUrl(new URL(location, current).href);
       continue;
     }
-    return { url: current.href, status: response.status, content_type: response.headers.get("Content-Type") || "", text: await readBoundedText(response, limit) };
+    return { url: current.href, status: response.status, content_type: response.headers.get("Content-Type") || "", headers: Object.fromEntries(response.headers.entries()), redirects, text: await readBoundedText(response, limit) };
   }
   throw new Error("Too many redirects.");
 }
@@ -63,7 +65,7 @@ export function detectTechStack(html, headers = {}) {
   return found;
 }
 
-export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMatches, cleanText }) {
+export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMatches, cleanText, headers = {} }) {
   const title = decode(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
   const description = meta(html, "description", "name");
   let canonical = "";
@@ -95,7 +97,7 @@ export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMa
     { label: "Structured data", status: schema ? "pass" : "warn", detail: schema ? "JSON-LD detected" : "No JSON-LD script detected" }
   ];
   const score = Math.round(checks.reduce((sum, check) => sum + (check.status === "pass" ? 12.5 : check.status === "warn" ? 7 : 0), 0));
-  return { url, status_code: status, score, title, description, canonical, h1, images_count: images.length, images_missing_alt: missingAlt, robots_meta: robots, tech_stack: detectTechStack(html), checks };
+  return { url, status_code: status, score, title, description, canonical, h1, images_count: images.length, images_missing_alt: missingAlt, robots_meta: robots, tech_stack: detectTechStack(html, headers), checks };
 }
 
 export function parseSitemapLocs(xml, decode) {
