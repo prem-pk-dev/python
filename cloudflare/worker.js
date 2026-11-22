@@ -603,7 +603,7 @@ if(url.pathname==="/api/seo-audit"&&request.method==="POST"){
    seen.add(target.href);if(links.length>=30)break;links.push(target.href);
   }
   result.link_checks=[];
-  for(const link of links){try{const check=await fetchPublicText(link,{publicUrl,publicCrawlUrl,limit:16000});result.link_checks.push({url:link,final_url:check.url,status:check.status,redirected:check.url!==link,redirect_statuses:check.redirects.map(x=>x.status),ok:check.status>=200&&check.status<400})}catch(error){result.link_checks.push({url:link,status:0,ok:false,error:String(error.message||error).slice(0,140)})}}
+  for(const link of links){try{const check=await fetchPublicText(link,{publicUrl,publicCrawlUrl,limit:16000});result.link_checks.push({url:link,final_url:check.url,status:check.status,redirected:check.redirects.length>0,redirect_statuses:check.redirects.map(x=>x.status),ok:check.status>=200&&check.status<400})}catch(error){result.link_checks.push({url:link,status:0,ok:false,error:String(error.message||error).slice(0,140)})}}
   result.link_check_summary={checked:result.link_checks.length,broken:result.link_checks.filter(x=>!x.ok).length,redirects:result.link_checks.filter(x=>x.redirected).length,limit:30};
   return json(result);
 }
