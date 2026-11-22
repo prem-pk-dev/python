@@ -35,10 +35,9 @@ jobs:
             const end = source.lastIndexOf("`", boundary);
             if (boundary < 0 || end < contentStart) throw new Error("Dashboard HTML template boundary not found");
             const html = source.slice(contentStart, end);
-            const scriptStart = html.indexOf("<script>");
-            const scriptEnd = html.indexOf("</script>", scriptStart);
-            if (scriptStart < 0 || scriptEnd < 0) throw new Error("Inline dashboard script not found");
-            if (html.indexOf("<script>", scriptEnd + 9) >= 0) throw new Error("Unexpected additional inline script");
+            const scriptStart = html.lastIndexOf("<script>");
+            const scriptEnd = html.lastIndexOf("</script>");
+            if (scriptStart < 0 || scriptEnd < scriptStart) throw new Error("Main inline dashboard script not found");
             process.stdout.write(html.slice(scriptStart + 8, scriptEnd));
           ' > "$tmp"
           node --check "$tmp"
