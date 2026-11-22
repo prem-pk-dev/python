@@ -50,21 +50,20 @@ export async function fetchPublicText(raw, { publicUrl, publicCrawlUrl, fetchImp
 
 export function detectTechStack(html, headers = {}) {
   const source = String(html || "").toLowerCase();
-  const h = Object.fromEntries(Object.entries(headers || {}).map(([k,v]) => [k.toLowerCase(), String(v).toLowerCase()]));
+  const h = Object.fromEntries(Object.entries(headers || {}).map(([k, v]) => [k.toLowerCase(), String(v).toLowerCase()]));
   const found = [];
   const add = (name, yes) => { if (yes && !found.includes(name)) found.push(name); };
-  add("Next.js", /__next|_next\\/static|next-router-state-tree/.test(source));
-  add("React", /react\\.dom|reactroot|__react|data-reactroot/.test(source));
+  add("Next.js", /__next|_next\/static|next-router-state-tree/.test(source));
+  add("React", /react\.dom|reactroot|__react|data-reactroot/.test(source));
   add("WordPress", /wp-content|wp-includes|wp-json/.test(source) || /x-powered-by.*wordpress/.test(h.server || ""));
   add("Tailwind CSS", /tailwindcss|--tw-[a-z-]+/.test(source));
-  add("Shopify", /cdn\\.shopify\\.com|shopify-section|\\.myshopify\\.com/.test(source));
-  add("Vite", /@vite/client|vite/modulepreload/.test(source));
+  add("Shopify", /cdn\.shopify\.com|shopify-section|\.myshopify\.com/.test(source));
+  add("Vite", /@vite\/client|vite\/modulepreload/.test(source));
   add("Cloudflare", /cf-ray|cloudflare/.test(h.server || "") || /__cf_bm|cf_clearance/.test(source));
-  add("Vue", /__vue__|data-v-[a-f0-9]+|vue\\.runtime/.test(source));
+  add("Vue", /__vue__|data-v-[a-f0-9]+|vue\.runtime/.test(source));
   add("Angular", /ng-version=|ng-app=/.test(source));
   return found;
 }
-
 export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMatches, cleanText, headers = {} }) {
   const title = decode(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
   const description = meta(html, "description", "name");
