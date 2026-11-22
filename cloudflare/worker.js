@@ -715,7 +715,7 @@ if(url.pathname==="/api/site-discovery"&&request.method==="POST"){
  const stories=(await Promise.all(selected.map(async id=>{
   try{const response=await fetch("https://hacker-news.firebaseio.com/v0/item/"+id+".json",{headers:{"Accept":"application/json"}});
    if(!response.ok)return null;const item=await response.json();if(!item||item.deleted||item.dead||!item.title)return null;
-   return{id:item.id,title:item.title,url:item.url||("https://news.ycombinator.com/item?id="+item.id),by:item.by||"unknown",score:Number(item.score||0),descendants:Number(item.descendants||0),time:Number(item.time||0),text:typeof item.text==="string"?item.text.replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#x27;|&#39;/g,"'").replace(/\\s+/g," ").trim().slice(0,420):""};
+   return{id:item.id,title:item.title,url:(()=>{try{const target=new URL(item.url);return["http:","https:"].includes(target.protocol)?target.href:"https://news.ycombinator.com/item?id="+item.id}catch{return"https://news.ycombinator.com/item?id="+item.id}})(),by:item.by||"unknown",score:Number(item.score||0),descendants:Number(item.descendants||0),time:Number(item.time||0),text:typeof item.text==="string"?item.text.replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#x27;|&#39;/g,"'").replace(/\s+/g," ").trim().slice(0,420):""};
   }catch{return null}
  }))).filter(Boolean);
  return json({category,stories,updated_at:Date.now()});
