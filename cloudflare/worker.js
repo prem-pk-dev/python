@@ -330,7 +330,7 @@ function renderPageNavigator(){
  const shot=liveShots.find(item=>item.url===url);
  if(shot){$('selectedPageScreenshot').src=shot.objectUrl;$('selectedPageScreenshot').style.display='block';$('selectedPageNoShot').style.display='none'}
  else{$('selectedPageScreenshot').removeAttribute('src');$('selectedPageScreenshot').style.display='none';$('selectedPageNoShot').style.display='block';$('selectedPageNoShot').textContent=url?(urlStates[url]==='Failed'?'This page failed; no screenshot was captured.':'Waiting for this URL screenshot to be captured.'):'Screenshots will appear here as pages are captured.'}
- renderUrlInventory();
+ renderUrlInventory();if($('compareView').style.display==='block')updateCompare();
 }
 function selectDiscoveredUrl(index){
  if(index<0||index>=discoveredUrls.length)return;
@@ -419,7 +419,7 @@ function receiveCrawlEvent(event){
   }catch(e){addCrawlLog('Screenshot render failed: '+e.message,'error')}
  }
  if(type==='ui_checks'){
-  const c=event.checks||{},rows=[['HTTP status',c.http_status??'—'],['Load time',(c.load_time_ms??'—')+' ms'],['Total page size',(c.total_page_size_kb??'—')+' KB'],['Heavy images >500KB',c.heavy_image_count??0],['Broken assets 4xx/5xx',c.broken_asset_count??0],['Console errors',c.console_error_count??(c.console_errors||[]).length],['Broken images',c.broken_images??'—'],['Horizontal overflow',c.horizontal_overflow?'Yes':'No']];
+  const c=event.checks||{};if((c.broken_asset_count||0)>0)sendWebhookAlert('Broken assets detected',event),rows=[['HTTP status',c.http_status??'—'],['Load time',(c.load_time_ms??'—')+' ms'],['Total page size',(c.total_page_size_kb??'—')+' KB'],['Heavy images >500KB',c.heavy_image_count??0],['Broken assets 4xx/5xx',c.broken_asset_count??0],['Console errors',c.console_error_count??(c.console_errors||[]).length],['Broken images',c.broken_images??'—'],['Horizontal overflow',c.horizontal_overflow?'Yes':'No']];
   $('liveChecks').textContent='';for(const pair of rows){const line=document.createElement('div');line.textContent=pair[0]+': '+pair[1];$('liveChecks').append(line)}
  }
  if(type==='page_done'){
@@ -460,7 +460,7 @@ async function startLiveCrawl(){
  $('liveBoot').innerHTML='<strong>Booting Chromium Runner…</strong>GitHub Actions runner is starting. This commonly takes 15–30 seconds.';
  $('liveFrame').style.display='none';$('liveProgress').style.width='0%';$('liveHttp').textContent='HTTP —';$('livePage').textContent='Page 0 of '+livePageTotal;autoFollowUrls=true;addCrawlLog('Dispatching live Playwright crawl…');
  try{
-  const d=await api('/api/crawl/start',{method:'POST',body:JSON.stringify({url:$('crawlUrl').value,max_pages:Number($('crawlPages').value),devices:$('crawlDevices').value,screenshot_mode:$('crawlCapture').value})});activeWorkflowRunId=d.workflow_run_id||null;$('stopCrawlBtn').disabled=!activeWorkflowRunId;crawlStartedAt=Date.now();if(crawlTimer)clearInterval(crawlTimer);crawlTimer=setInterval(()=>{$('crawlElapsed').textContent='Elapsed '+Math.floor((Date.now()-crawlStartedAt)/1000)+'s'},1000);
+  const d=await api('/api/crawl/start',{method:'POST',body:JSON.stringify({url:$('crawlUrl').value,max_pages:Number($('crawlPages').value),devices:$('crawlDevices').value,screenshot_mode:$('crawlCapture').value})});activeWorkflowRunId=d.workflow_run_id||null;$('stopCrawlBtn').disabled=!activeWorkflowRunId;crawlStartedAt=Date.now();if(crawlTimer)clearInterval(crawlTimer);crawlTimer=setInterval(()=>{const elapsed=Math.floor((Date.now()-crawlStartedAt)/1000),eta=liveDone?Math.max(0,Math.round(elapsed/liveDone*(livePageTotal-liveDone))):null;$('crawlElapsed').textContent='Elapsed '+elapsed+'s · ETA '+(eta===null?'—':eta+'s')},1000);
   activeCrawlId=d.crawl_id;
   const socketUrl=d.ws_url+'?token='+encodeURIComponent(d.ws_token);activeCrawlSocket=new WebSocket(socketUrl);
   activeCrawlSocket.onopen=()=>addCrawlLog('Connected to in-memory CrawlSessionHub relay.','success');
