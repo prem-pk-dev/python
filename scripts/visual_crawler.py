@@ -10,6 +10,10 @@ import re
 import socket
 import sys
 import time
+import gzip
+import xml.etree.ElementTree as ET
+from urllib.parse import urljoin
+from urllib.robotparser import RobotFileParser
 from collections import deque
 from urllib.parse import urldefrag, urlparse, urlunparse
 
@@ -25,6 +29,118 @@ DEVICES = {
     "Mobile": {"width": 390, "height": 844},
 }
 DNS_CACHE = {}
+
+
+MAX_SITEMAP_FILES = 20
+MAX_SITEMAP_BYTES = 2 * 1024 * 1024
+
+
+def parse_sitemap_document(xml_text):
+    """Return ('index'|'urlset', locs); reject malformed or unexpected XML."""
+    root = ET.fromstring(xml_text)
+    kind = root.tag.rsplit("}", 1)[-1].lower()
+    if kind not in ("sitemapindex", "urlset"):
+        return "unknown", []
+    locations = []
+    for node in root.iter():
+        if node.tag.rsplit("}", 1)[-1].lower() == "loc" and node.text:
+            value = node.text.strip()
+            if value:
+                locations.append(value)
+    return ("index" if kind == "sitemapindex" else "urlset"), locations
+
+
+def same_site_http_url(candidate, root_host):
+    try:
+        parsed = urlparse(candidate)
+        return parsed.scheme in ("http", "https") and parsed.hostname and parsed.hostname.lower() == root_host.lower()
+    except Exception:
+        return False
+
+
+async def fetch_bounded_text(client, url, limit=MAX_SITEMAP_BYTES):
+    """Fetch a small public discovery document without unbounded response buffering."""
+    chunks = []
+    size = 0
+    async with client.stream("GET", url, timeout=20.0, follow_redirects=True,
+                             headers={"User-Agent": "PythonScraperDashboard/1.0 (+public-site-crawler)"} ) as response:
+        final_url = str(response.url)
+        await validate_public_url(final_url)
+        if response.status_code < 200 or response.status_code >= 300:
+            return response.status_code, final_url, ""
+        async for chunk in response.aiter_bytes():
+            size += len(chunk)
+            if size > limit:
+                raise ValueError(f"Discovery document exceeds {limit // 1024} KB safety limit.")
+            chunks.append(chunk)
+        raw = b"".join(chunks)
+        if final_url.lower().endswith(".gz"):
+            raw = gzip.decompress(raw)
+            if len(raw) > limit:
+                raise ValueError(f"Decompressed sitemap exceeds {limit // 1024} KB safety limit.")
+        return response.status_code, final_url, raw.decode("utf-8", errors="replace")
+
+
+async def discover_sitemap_urls(client, start_url, limit):
+    """Discover same-host sitemap URLs; bounded by file count, bytes and requested page cap."""
+    root = urlparse(start_url)
+    origin = f"{root.scheme}://{root.netloc}"
+    robots_url = urljoin(origin, "/robots.txt")
+    robots_status = None
+    robots_parser = RobotFileParser()
+    sitemap_queue = deque()
+    try:
+        robots_status, robots_final, robots_text = await fetch_bounded_text(client, robots_url, 256 * 1024)
+        if 200 <= robots_status < 300:
+            robots_parser.set_url(robots_final)
+            robots_parser.parse(robots_text.splitlines())
+            for line in robots_text.splitlines():
+                if line.strip().lower().startswith("sitemap:"):
+                    sitemap_queue.append(line.split(":", 1)[1].strip())
+    except Exception as exc:
+        print(f"[discovery-warning] robots.txt unavailable: {str(exc)[:180]}", flush=True)
+    if not sitemap_queue:
+        sitemap_queue.append(urljoin(origin, "/sitemap.xml"))
+
+    found = []
+    found_set = set()
+    visited_sitemaps = set()
+    sitemap_count = 0
+    while sitemap_queue and sitemap_count < MAX_SITEMAP_FILES and len(found) < limit:
+        sitemap_url = sitemap_queue.popleft()
+        if sitemap_url in visited_sitemaps:
+            continue
+        visited_sitemaps.add(sitemap_url)
+        if not same_site_http_url(sitemap_url, root.hostname):
+            continue
+        try:
+            await validate_public_url(sitemap_url)
+            status, final_url, xml_text = await fetch_bounded_text(client, sitemap_url)
+            sitemap_count += 1
+            if status < 200 or status >= 300:
+                continue
+            kind, locations = parse_sitemap_document(xml_text)
+            if kind == "index":
+                for location in locations:
+                    child = urljoin(final_url, location)
+                    if same_site_http_url(child, root.hostname) and child not in visited_sitemaps and len(sitemap_queue) < MAX_SITEMAP_FILES:
+                        sitemap_queue.append(child)
+            elif kind == "urlset":
+                for location in locations:
+                    candidate = normalize_url(urljoin(final_url, location))
+                    if not same_site_http_url(candidate, root.hostname) or candidate in found_set:
+                        continue
+                    if not robots_parser.can_fetch("*", candidate) and robots_status and 200 <= robots_status < 300:
+                        continue
+                    found_set.add(candidate)
+                    found.append(candidate)
+                    if len(found) >= limit:
+                        break
+        except Exception as exc:
+            print(f"[discovery-warning] sitemap skipped {sitemap_url}: {str(exc)[:180]}", flush=True)
+    return found, {"robots_status": robots_status, "sitemaps_read": sitemap_count,
+                   "sitemap_limit": MAX_SITEMAP_FILES, "url_limit": limit,
+                   "robots_url": robots_url}
 
 
 def normalize_url(value):
@@ -245,10 +361,20 @@ async def main():
                                 candidate = normalize_url(candidate)
                                 parsed = urlparse(candidate)
                                 root = urlparse(start_url)
-                                if parsed.scheme in ("http", "https") and parsed.hostname == root.hostname and candidate not in seen and candidate not in queue and len(seen) + len(queue) < limit * 3 and not re.search(r"\.(pdf|zip|png|jpe?g|gif|svg|webp|mp4|mp3|css|js|xml|json)(\?|$)", candidate, re.I):
+                                if same_site_http_url(candidate, root.hostname) and candidate not in seen and candidate not in queue and len(discovered_urls) < limit and not re.search(r"\.(pdf|zip|png|jpe?g|gif|svg|webp|mp4|mp3|css|js|xml|json)(\?|$)", candidate, re.I):
+                                    if discovery_meta["robots_status"] and 200 <= discovery_meta["robots_status"] < 300:
+                                        # Reuse robots policy parsed during sitemap discovery when available.
+                                        pass
+                                    await validate_public_url(candidate)
                                     queue.append(candidate)
+                                    if candidate not in discovered_set:
+                                        discovered_set.add(candidate)
+                                        discovered_urls.append(candidate)
                             except Exception:
                                 continue
+                        await emit(client, crawl_id, "url_inventory", urls=discovered_urls, total=len(discovered_urls),
+                                   truncated=len(discovered_urls) >= limit, sources=["robots.txt", "sitemap.xml", "internal links"],
+                                   discovery=discovery_meta, message=f"Discovered {len(discovered_urls)} URLs so far")
                         records.append({"url": url, "title": title, "status": status, "checks": checks})
                         await emit(client, crawl_id, "page_done", url=url, page=page_number, total=limit, device=selected[-1], status=status, checks=checks, message=f"Completed page {page_number}")
                     except Exception as exc:
