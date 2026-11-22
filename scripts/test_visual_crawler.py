@@ -23,6 +23,8 @@ class SitemapDiscoveryTests(unittest.TestCase):
 
     def test_same_host_only(self):
         self.assertTrue(same_site_http_url("https://example.com/a", "example.com"))
+        self.assertTrue(same_site_http_url("https://www.example.com/a", "example.com"))
+        self.assertTrue(same_site_http_url("https://example.com/a", "www.example.com"))
         self.assertFalse(same_site_http_url("https://other.example.com/a", "example.com"))
         self.assertFalse(same_site_http_url("javascript:alert(1)", "example.com"))
 
