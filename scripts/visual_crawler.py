@@ -120,6 +120,7 @@ async def discover_sitemap_urls(client, start_url, limit):
             print(f"[discovery-warning] sitemap skipped {sitemap_url}: {str(exc)[:180]}", flush=True)
     return found, {"robots_status": robots_status, "sitemaps_read": sitemap_count,
                    "sitemap_limit": MAX_SITEMAP_FILES, "url_limit": limit,
+                   "sitemaps_truncated": bool(sitemap_queue), "url_limit_reached": len(found) >= limit,
                    "robots_url": robots_url}, robots_parser
 
 
@@ -266,7 +267,7 @@ async def main():
     async with httpx.AsyncClient() as client:
         await emit(client, crawl_id, "booting", message="Launching Chromium runner", max_pages=limit, devices=selected)
         records = []
-        sitemap_urls, discovery_meta, robots_parser = await discover_sitemap_urls(client, start_url, limit)
+        sitemap_urls, discovery_meta, robots_parser = await discover_sitemap_urls(client, start_url, max(0, limit - 1))
         if discovery_meta["robots_status"] and 200 <= discovery_meta["robots_status"] < 300 and not robots_parser.can_fetch("*", start_url):
             raise ValueError("The requested start URL is disallowed by the site's robots.txt rules.")
         queue = deque([start_url])
@@ -276,7 +277,7 @@ async def main():
         discovered_urls = list(dict.fromkeys([start_url, *sitemap_urls]))[:limit]
         discovered_set = set(discovered_urls)
         await emit(client, crawl_id, "url_inventory", urls=discovered_urls, total=len(discovered_urls),
-                   truncated=len(sitemap_urls) >= limit, sources=["robots.txt", "sitemap.xml", "internal links"],
+                   truncated=discovery_meta["sitemaps_truncated"] or discovery_meta["url_limit_reached"], sources=["robots.txt", "sitemap.xml", "internal links"],
                    discovery=discovery_meta, message=f"URL discovery seeded {len(discovered_urls)} same-site URLs")
         seen = set()
         async with async_playwright() as playwright:
