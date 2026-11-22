@@ -47,6 +47,8 @@ jobs:
           python-version: "3.12"
       - name: Validate Playwright crawler syntax
         run: python -m py_compile scripts/visual_crawler.py
+      - name: Test sitemap discovery helpers
+        run: python -m unittest scripts.test_visual_crawler -v
       - name: Enforce no screenshot artifacts or DO storage API usage
         run: |
           ! grep -q "actions/upload-artifact" .github/workflows/visual-crawler.yml
