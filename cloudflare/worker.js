@@ -372,7 +372,7 @@ function renderShotFilters(){
  if(liveShots.length)window.addEventListener('beforeunload',crawlUnsavedGuard);
 }
 function receiveCrawlEvent(event){
- if(event.crawl_id&&event.crawl_id!==activeCrawlId)return;
+ if(event.crawl_id&&event.crawl_id!==activeCrawlId)return;if(event.workflow_run_id){activeWorkflowRunId=String(event.workflow_run_id);$('stopCrawlBtn').disabled=false}
  const type=event.type||'event',stamp=event.timestamp||Date.now();
  const message=event.message||type.replaceAll('_',' ');
  addCrawlLog(message,event.level==='error'||type==='failed'?'error':event.level==='warning'?'warn':type==='completed'?'success':'info',stamp);
@@ -462,6 +462,7 @@ async function startLiveCrawl(){
  }catch(e){$('crawlStatus').textContent=e.message;addCrawlLog('Could not start crawl: '+e.message,'error');b.disabled=false}
 }
 $('crawlBtn').onclick=startLiveCrawl;
+$('stopCrawlBtn').onclick=async()=>{if(!activeWorkflowRunId){addCrawlLog('Waiting for workflow run ID.','warn');return}try{await api('/api/crawl/stop',{method:'POST',body:JSON.stringify({run_id:activeWorkflowRunId})});addCrawlLog('Cancellation requested.','warn');$('stopCrawlBtn').disabled=true}catch(e){addCrawlLog('Stop failed: '+e.message,'error')}};
 
 </script></body></html>`
 const cors = { "Access-Control-Allow-Origin": "same-origin", "Vary": "Origin" };
