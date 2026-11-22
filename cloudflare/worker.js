@@ -21,6 +21,20 @@ const HTML = String.raw`<!doctype html>
 .shot-info{padding:10px}.shot-url{font:10px ui-monospace,monospace;color:#a9c4d9;overflow-wrap:anywhere;max-height:34px;overflow:hidden}.shot-meta{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}.shot-meta span{font-size:9px;padding:4px 6px;border-radius:6px;background:#17344b;color:#cde8fb}.shot-meta .pass{background:#064a39;color:#70eab8}.shot-meta .warning{background:#4b3a1b;color:#ffd58a}
 .shot-actions{display:flex;gap:6px}.shot-actions button{flex:1;margin:0;padding:7px 5px;font-size:10px}#liveEmpty{color:#7895ae;text-align:center;padding:24px;font-size:12px;grid-column:1/-1}
 #liveLightbox{position:fixed;inset:0;z-index:50;background:#020810ed;display:none;align-items:center;justify-content:center;padding:24px}#liveLightbox.open{display:flex}#liveLightbox img{max-width:95vw;max-height:88vh;object-fit:contain}#liveLightbox button{position:absolute;top:18px;right:20px}
+#urlExplorer{margin:16px 0;background:#0a1929;border:1px solid #1c3d56;border-radius:12px;padding:14px}
+#urlExplorer h3,#pageNavigator h3{margin:0 0 10px;color:#d9eafb;font-size:14px}
+#urlInventory{max-height:240px;overflow:auto;display:grid;gap:5px}
+.url-entry{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#10263a;border:1px solid #1c3d56;color:#c9d9e8;border-radius:7px;padding:8px;font:10px monospace;cursor:pointer}
+.url-entry[aria-current="true"]{border-color:#48b8a5;background:#123c3b}
+.url-entry .url-state{margin-left:auto;white-space:nowrap;color:#86a2b9;font:9px sans-serif}
+#pageNavigator{margin:16px 0;background:#0a1929;border:1px solid #1c3d56;border-radius:12px;padding:14px}
+#selectedPageUrl{font:11px monospace;overflow-wrap:anywhere;color:#9fc6df;margin:8px 0 12px}
+#selectedPageScreenshot{display:none;width:100%;max-height:560px;object-fit:contain;background:#071321;border-radius:8px;margin:10px 0}
+#selectedPageNoShot{padding:24px;text-align:center;color:#7895ae;background:#071321;border-radius:8px;font-size:12px}
+#pageNavigator .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#pageNavigator button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:600px){#pageNavigator .row{flex-wrap:wrap}#pageNavigator .row button{flex:1}#urlInventory{max-height:190px}}
+
 @media(max-width:820px){.live-work-grid{grid-template-columns:1fr}.live-viewport{height:300px}}
 :root{color-scheme:light;background:#f3f6fa;color:#172338}.hero-art{display:none}body{background:#f3f6fa;color:#172338}.sidebar{width:252px;background:#101b2b;border-right:1px solid #26364a;padding:22px 16px}.brandmark{padding-bottom:24px}.brandicon{background:#0d756e;box-shadow:none}.brandname{color:#f2f7fc}.brandname small{color:#91a4b9}.nav{display:grid;gap:4px}.nav-label{font-size:9px;letter-spacing:.16em;font-weight:800;color:#71849b;padding:17px 12px 5px}.nav-item{width:100%;border:0;background:transparent;color:#b8c7d8;text-align:left;display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer}.nav-item span{width:20px;color:#9eb2c7;font-size:17px}.nav-item:hover{background:#1b2c40;color:#fff}.nav-item.active{background:#17463f;color:#c9fff0}.side-rule{margin:17px 6px}.quick{display:grid;gap:7px}.quick-title{font-size:10px;letter-spacing:.13em;color:#71849b}.quick button{background:#172a3e;border:1px solid #2a4057;color:#d4e3f1;text-align:left;padding:10px 11px;border-radius:9px;font-size:12px;cursor:pointer}.side-note{color:#7c91a8}.main{margin-left:252px;background:#f3f6fa;min-height:100vh}.topbar{height:68px;background:#fff;border-color:#e6ebf2}.module-search{width:min(560px,70%);border:1px solid #e0e6ee;border-radius:10px;background:#f7f9fc;color:#24364c;padding:11px 14px;font-size:13px}.userchip{color:#26374d}.avatar{background:#dcefe9;color:#116c62}.content{max-width:1500px;padding:30px clamp(20px,3vw,44px) 60px}.view{display:none}.view.active{display:block;animation:viewIn .18s ease}@keyframes viewIn{from{opacity:.5;transform:translateY(4px)}to{opacity:1;transform:none}}.hero{margin:2px 0 25px}.eyebrow{color:#168276;font-size:10px;font-weight:800}.hero h1,.view-heading h1{font-size:clamp(29px,3.2vw,39px);color:#172338;letter-spacing:-.04em}.hero h1 span,.view-heading h1 span{color:#138579}.hero p,.view-heading p{color:#708097}.metrics{gap:12px}.metriccard{background:#fff;border:1px solid #e5eaf1;border-radius:13px;box-shadow:0 2px 8px #152b4210}.metricicon{background:#e8f4f1!important;color:#117b70!important;border-radius:11px}.metriclabel{color:#718097}.metricvalue{color:#1b2a3e}.section-heading{display:flex;justify-content:space-between;align-items:end;margin:28px 0 13px}.section-heading h2{font-size:18px;margin:0 0 5px}.section-heading p{font-size:12px;color:#75849a;margin:0}.section-kicker,.view-chip{font-size:9px;font-weight:800;letter-spacing:.12em;color:#168276;background:#e7f4f1;border:1px solid #cfe8e1;border-radius:30px;padding:7px 10px}.module-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.module-card[hidden]{display:none!important}.module-card{min-height:170px;background:#fff;border:1px solid #e3e9f0;border-radius:14px;padding:18px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;cursor:pointer;box-shadow:0 2px 9px #152b4208;transition:transform .16s,border-color .16s}.module-card:hover{transform:translateY(-2px);border-color:#9bcfc3}.module-card b{width:36px;height:36px;display:grid;place-items:center;background:#eaf5f2;border-radius:10px;color:#11796e;font-size:20px;margin-bottom:12px}.module-card strong{font-size:14px;color:#1c2b40}.module-card small{font-size:11px;line-height:1.6;color:#728197;margin-top:7px}.module-card span{font-size:11px;color:#168276;font-weight:750;margin-top:auto;padding-top:12px}.overview-foot{color:#74849a;font-size:11px;margin-top:18px}.view-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:2px 0 23px}.view-heading h1{margin:8px 0 5px}.view-heading p{margin:0;font-size:13px}.panel{background:#fff;border:1px solid #e4eaf1;border-radius:14px;padding:21px;box-shadow:0 2px 10px #152b4208}.panel h2{color:#1c2c41}.panel p{color:#718097}.panel label{color:#34465c}.panel input,.panel select{background:#f8fafc!important;border:1px solid #dce4ed!important;color:#1c2c41!important;border-radius:9px!important}.btn{background:#137d72;color:#fff;border-radius:9px;padding:11px 15px}.btn.secondary{background:#f1f5f8;color:#3b5066;border:1px solid #dce5ec}.status{color:#168276}.tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.tool-panel{min-width:0}.tool-results{border-top:1px solid #edf0f4;margin-top:16px;padding-top:14px;min-height:95px;font-size:12px;color:#66768b}.notice-strip{margin-top:16px;padding:12px 14px;background:#edf5f4;border:1px solid #d9ebe7;border-radius:9px;color:#5d766f;font-size:11px}.single-tool{max-width:900px}.single-tool .panel{width:100%}.data-layout,.settings-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,.8fr);gap:15px}.data-layout .result{background:#101d2b;color:#d9e6f2}.data-layout .activityitem strong{color:#24374d}.settings-list{padding:0;margin:15px 0 0;list-style:none}.settings-list li{display:flex;justify-content:space-between;gap:20px;padding:12px 0;border-bottom:1px solid #edf0f3;font-size:11px}.settings-list span{color:#728197;text-align:right;max-width:65%}.list .run{background:#f8fafb;border-color:#e5eaf0}.list .run strong{color:#25374c}#liveWorkspace{margin:18px 0 22px;color:#e8f2ff}.live-panel{background:#0a1929;border-color:#1c3d56}.live-head h2,.live-panel h3{color:#d9eafb}.foot{color:#7c8b9d}@media(max-width:1120px){.module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tool-grid{grid-template-columns:1fr}}@media(max-width:820px){.sidebar{position:static;width:auto;height:auto;padding:10px 13px}.brandmark{padding:4px 4px 12px}.nav{display:flex;overflow-x:auto;gap:4px}.nav-label{display:none}.nav-item{white-space:nowrap;width:auto;flex:0 0 auto;padding:9px 11px}.nav-item span{display:none}.side-rule,.quick,.side-note{display:none}.main{margin-left:0}.topbar{height:58px}.content{padding:20px 14px 40px}.module-grid,.data-layout,.settings-grid{grid-template-columns:1fr 1fr}.view-heading{align-items:flex-start;flex-direction:column}}@media(max-width:480px){.metrics,.module-grid,.tool-grid,.data-layout,.settings-grid{grid-template-columns:1fr}.panel{padding:16px}.settings-list li{flex-direction:column}.settings-list span{text-align:left;max-width:none}.module-search{width:100%}.userchip{display:none}}@media(max-width:820px){
 .sidebar{position:static;width:auto;height:0;padding:0;border:0;overflow:visible;background:transparent;z-index:auto}
@@ -49,6 +63,8 @@ const HTML = String.raw`<!doctype html>
  <div class="live-head"><div><h2>◉ Live Browser Workspace</h2><div class="live-sub">Live Chromium · Activity stream · In-memory screenshot gallery</div></div><div class="row"><span class="live-badge"><i class="live-dot"></i> LIVE SESSION ONLY · NOTHING SAVED ON SERVER</span><button class="btn secondary" id="clearCrawlBtn" style="margin:0">Clear Session</button></div></div>
  <div class="live-stage"><div class="live-browserbar"><span class="live-lights"><i></i><i></i><i></i></span><span id="liveUrl">Waiting for a crawl session…</span><span class="live-pill" id="liveHttp">HTTP —</span><span class="live-pill" id="liveDevice">Desktop</span><span class="live-pill" id="livePage">Page 0 of 0</span><span class="live-badge"><i class="live-dot"></i> LIVE</span></div><div class="live-progress"><span id="liveProgress"></span></div><div class="live-viewport"><img id="liveFrame" alt="Live Playwright browser viewport"><div id="liveBoot"><strong>Booting Chromium Runner…</strong>Start a visual crawl to stream the live browser here.</div></div></div>
  <div class="live-work-grid"><div class="live-panel"><h3>▤ Live Activity Stream</h3><div id="liveLogs"><div class="live-log">Waiting for session events…</div></div></div><div class="live-panel"><h3>◈ Current UI Checks</h3><div id="liveChecks" class="muted" style="font-size:11px;line-height:1.8">Checks appear after each page loads.</div></div></div>
+ <section id="urlExplorer"><h3>▤ Discovered Website URLs <span id="urlCount" class="muted">(0)</span></h3><div id="urlDiscoveryMeta" class="live-sub">URLs discovered from sitemap and same-site links will appear here.</div><div id="urlInventory"><div id="urlInventoryEmpty" class="muted">Start a crawl to discover public URLs.</div></div></section>
+ <section id="pageNavigator"><h3>▣ URL Screenshot Navigator</h3><div id="selectedPagePosition" class="live-sub">Page 0 of 0</div><div id="selectedPageUrl">Choose a discovered URL or start a crawl.</div><div class="row"><button class="btn secondary" id="previousPageBtn" disabled>← Previous</button><button class="btn" id="nextPageBtn" disabled>Next →</button></div><img id="selectedPageScreenshot" alt="Selected URL screenshot"><div id="selectedPageNoShot">Screenshots will appear here as pages are captured.</div></section>
  <div class="live-gallery-head"><h3>▧ Live Captured Screenshots <span id="shotCount" class="muted">(0)</span></h3><div class="row"><div class="live-filters"><select id="filterDevice"><option value="all">All devices</option><option>Desktop</option><option>Tablet</option><option>Mobile</option></select><select id="filterMode"><option value="all">All modes</option><option value="viewport">Viewport</option><option value="full_page">Full Page</option></select></div><button class="btn secondary" id="downloadAllBtn" style="margin:0" disabled>↓ Download All (.zip)</button></div></div>
  <div id="liveGallery"><div id="liveEmpty">Screenshots will appear here as soon as Playwright captures them. Nothing is stored after this browser session.</div></div>
 </section><div id="liveLightbox"><button class="btn secondary" id="closeLightbox">✕ Close</button><img id="lightboxImage" alt="Screenshot preview"></div>
@@ -79,7 +95,7 @@ async function loadRuns(){$('historyStatus').textContent='Loading…';try{const 
 $('refreshBtn').onclick=loadRuns;
 
 /* RAM-only live crawl client */
-let activeCrawlSocket=null,activeCrawlId=null,liveShots=[],stageObjectUrl=null,livePageTotal=0,liveDone=0;
+let activeCrawlSocket=null,activeCrawlId=null,liveShots=[],stageObjectUrl=null,livePageTotal=0,liveDone=0,discoveredUrls=[],urlStates={},selectedUrlIndex=0,autoFollowUrls=true;
 function crawlUnsavedGuard(event){if(liveShots.length){event.preventDefault();event.returnValue='This live session has unsaved screenshots. Leaving will clear them.';return event.returnValue}}
 function releaseCrawlMemory(){
  for(const shot of liveShots){try{URL.revokeObjectURL(shot.objectUrl)}catch{}}
@@ -87,8 +103,45 @@ function releaseCrawlMemory(){
  if(stageObjectUrl){URL.revokeObjectURL(stageObjectUrl);stageObjectUrl=null}
  $('liveFrame').removeAttribute('src');$('liveLightbox').classList.remove('open');$('lightboxImage').removeAttribute('src');$('liveGallery').innerHTML='<div id="liveEmpty">Screenshots will appear here as the live crawl runs.</div>';
  $('shotCount').textContent='(0)';$('downloadAllBtn').disabled=true;
+ discoveredUrls=[];urlStates={};selectedUrlIndex=0;autoFollowUrls=true;
+ $('urlCount').textContent='(0)';$('urlDiscoveryMeta').textContent='URLs discovered from sitemap and same-site links will appear here.';
+ $('urlInventory').innerHTML='<div id="urlInventoryEmpty" class="muted">Start a crawl to discover public URLs.</div>';
+ renderPageNavigator();
  window.removeEventListener('beforeunload',crawlUnsavedGuard);
 }
+
+function renderUrlInventory(){
+ $('urlCount').textContent='('+discoveredUrls.length+')';
+ $('urlInventory').textContent='';
+ if(!discoveredUrls.length){const empty=document.createElement('div');empty.className='muted';empty.textContent='No URLs discovered yet.';$('urlInventory').append(empty);return}
+ discoveredUrls.forEach((url,index)=>{
+  const button=document.createElement('button');button.type='button';button.className='url-entry';button.setAttribute('aria-current',String(index===selectedUrlIndex));button.onclick=()=>selectDiscoveredUrl(index);
+  const address=document.createElement('span');address.textContent=(index+1)+'. '+url;
+  const state=document.createElement('span');state.className='url-state';state.textContent=urlStates[url]||'Queued';
+  button.append(address,state);$('urlInventory').append(button);
+ });
+}
+function renderPageNavigator(){
+ const total=discoveredUrls.length,index=total?Math.min(selectedUrlIndex,total-1):0,url=total?discoveredUrls[index]:'';
+ $('selectedPagePosition').textContent=total?'Page '+(index+1)+' of '+total:'Page 0 of 0';
+ $('selectedPageUrl').textContent=url||'Choose a discovered URL or start a crawl.';
+ $('previousPageBtn').disabled=!total||index===0;$('nextPageBtn').disabled=!total||index>=total-1;
+ const shot=liveShots.find(item=>item.url===url);
+ if(shot){$('selectedPageScreenshot').src=shot.objectUrl;$('selectedPageScreenshot').style.display='block';$('selectedPageNoShot').style.display='none'}
+ else{$('selectedPageScreenshot').removeAttribute('src');$('selectedPageScreenshot').style.display='none';$('selectedPageNoShot').style.display='block';$('selectedPageNoShot').textContent=url?(urlStates[url]==='Failed'?'This page failed; no screenshot was captured.':'Waiting for this URL screenshot to be captured.'):'Screenshots will appear here as pages are captured.'}
+ renderUrlInventory();
+}
+function selectDiscoveredUrl(index){
+ if(index<0||index>=discoveredUrls.length)return;
+ selectedUrlIndex=index;autoFollowUrls=false;renderPageNavigator();
+}
+function moveDiscoveredUrl(delta){
+ if(!discoveredUrls.length)return;
+ const next=Math.max(0,Math.min(discoveredUrls.length-1,selectedUrlIndex+delta));
+ if(next!==selectedUrlIndex)selectDiscoveredUrl(next);
+}
+$('previousPageBtn').onclick=()=>moveDiscoveredUrl(-1);
+$('nextPageBtn').onclick=()=>moveDiscoveredUrl(1);
 function addCrawlLog(message,level='info',stamp=Date.now()){
  const row=document.createElement('div');row.className='live-log '+level;
  const time=document.createElement('span');time.className='time';time.textContent=new Date(stamp).toLocaleTimeString();
@@ -131,10 +184,24 @@ function receiveCrawlEvent(event){
  const type=event.type||'event',stamp=event.timestamp||Date.now();
  const message=event.message||type.replaceAll('_',' ');
  addCrawlLog(message,event.level==='error'||type==='failed'?'error':event.level==='warning'?'warn':type==='completed'?'success':'info',stamp);
+ if(type==='url_inventory'){
+  const incoming=Array.isArray(event.urls)?event.urls:[];
+  discoveredUrls=incoming.filter((url,index)=>typeof url==='string'&&url.startsWith('http')&&incoming.indexOf(url)===index).slice(0,100);
+  discoveredUrls.forEach(url=>{if(!urlStates[url])urlStates[url]='Queued'});
+  $('urlDiscoveryMeta').textContent='Sources: '+(event.sources||[]).join(', ')+' · Sitemap files: '+(event.discovery?.sitemaps_read??'—')+' · Robots HTTP: '+(event.discovery?.robots_status??'unavailable')+(event.truncated?' · URL limit reached':'');
+  if(autoFollowUrls&&event.url){const at=discoveredUrls.indexOf(event.url);if(at>=0)selectedUrlIndex=at}
+  renderPageNavigator();
+ }
  if(event.url)$('liveUrl').textContent=event.url;
  if(event.device)$('liveDevice').textContent=event.device;
  if(event.page){$('livePage').textContent='Page '+event.page+' of '+(event.total||livePageTotal||'?');}
- if(type==='opening_url'){$('liveHttp').textContent='HTTP —';$('liveHttp').className='live-pill'}
+ if(type==='opening_url'){
+  $('liveHttp').textContent='HTTP —';$('liveHttp').className='live-pill';
+  if(!discoveredUrls.includes(event.url)&&discoveredUrls.length<100){discoveredUrls.push(event.url);urlStates[event.url]='Queued'}
+  urlStates[event.url]='Crawling';
+  if(autoFollowUrls){const at=discoveredUrls.indexOf(event.url);if(at>=0)selectedUrlIndex=at}
+  renderPageNavigator();
+ }
  if(type==='opening_url'||type==='booting'){
   $('liveBoot').style.display='block';
   $('liveBoot').innerHTML='<strong>Booting Chromium Runner…</strong>'+(event.message||'Launching Chromium. Live frames will appear shortly.');
@@ -147,7 +214,7 @@ function receiveCrawlEvent(event){
    const blob=base64Blob(event.image,event.mime),host=safeFileName(new URL(event.url).hostname);
    const name=host+'-page'+event.page+'-'+String(event.device||'desktop').toLowerCase()+'-'+event.mode+'.jpg';
    liveShots.push({blob,objectUrl:URL.createObjectURL(blob),filename:name,url:event.url,page:event.page,device:event.device,mode:event.mode,ui_status:event.ui_status||'warning'});
-   renderShotFilters();
+   renderShotFilters();renderPageNavigator();
   }catch(e){addCrawlLog('Screenshot render failed: '+e.message,'error')}
  }
  if(type==='ui_checks'){
@@ -156,7 +223,9 @@ function receiveCrawlEvent(event){
  }
  if(type==='page_done'){
   if(event.status){$('liveHttp').textContent='HTTP '+event.status;$('liveHttp').className='live-pill '+(event.status>=200&&event.status<400?'good':'bad')}
+  if(event.url)urlStates[event.url]=event.error?'Failed':'Completed';
   liveDone=Math.max(liveDone,event.page||0);$('liveProgress').style.width=Math.min(100,liveDone/Math.max(1,event.total||livePageTotal)*100)+'%';
+  renderPageNavigator();
  }
  if(type==='completed'||type==='failed'){
   if(type==='completed'){$('liveProgress').style.width='100%';if(event.pages_completed)$('livePage').textContent='Page '+event.pages_completed+' of '+event.pages_completed}
@@ -187,7 +256,7 @@ async function startLiveCrawl(){
  const b=$('crawlBtn');b.disabled=true;releaseCrawlMemory();liveDone=0;livePageTotal=Math.max(1,Number($('crawlPages').value)||1);
  $('liveLogs').innerHTML='';$('liveChecks').textContent='Waiting for first page…';$('liveBoot').style.display='block';
  $('liveBoot').innerHTML='<strong>Booting Chromium Runner…</strong>GitHub Actions runner is starting. This commonly takes 15–30 seconds.';
- $('liveFrame').style.display='none';$('liveProgress').style.width='0%';$('liveHttp').textContent='HTTP —';$('livePage').textContent='Page 0 of '+livePageTotal;addCrawlLog('Dispatching live Playwright crawl…');
+ $('liveFrame').style.display='none';$('liveProgress').style.width='0%';$('liveHttp').textContent='HTTP —';$('livePage').textContent='Page 0 of '+livePageTotal;autoFollowUrls=true;addCrawlLog('Dispatching live Playwright crawl…');
  try{
   const d=await api('/api/crawl/start',{method:'POST',body:JSON.stringify({url:$('crawlUrl').value,max_pages:Number($('crawlPages').value),devices:$('crawlDevices').value,screenshot_mode:$('crawlCapture').value})});
   activeCrawlId=d.crawl_id;
