@@ -590,7 +590,18 @@ if(url.pathname==="/api/seo-audit"&&request.method==="POST"){
  const body=await request.json(),page=await fetchPublicText(body.url,{publicUrl,publicCrawlUrl});
  if(page.status<200||page.status>=300)throw new Error("Website returned HTTP "+page.status);
  if(!page.content_type.toLowerCase().includes("html"))throw new Error("URL did not return an HTML webpage.");
- return json(auditSeo(page.text,page.url,page.status,{decode,meta,attrValue,findTagMatches,cleanText}));
+ const result=auditSeo(page.text,page.url,page.status,{decode,meta,attrValue,findTagMatches,cleanText});
+  const host=new URL(page.url).hostname,seen=new Set(),links=[];
+  for(const match of findTagMatches(page.text,"a")){
+   const raw=attrValue("<a "+match[2]+">","href");if(!raw||raw.startsWith("#")||/^(mailto:|tel:|javascript:)/i.test(raw))continue;
+   let target;try{target=new URL(raw,page.url)}catch{continue}
+   if(target.hostname!==host||!["http:","https:"].includes(target.protocol)||seen.has(target.href))continue;
+   seen.add(target.href);if(links.length>=30)break;links.push(target.href);
+  }
+  result.link_checks=[];
+  for(const link of links){try{const check=await fetchPublicText(link,{publicUrl,publicCrawlUrl,limit:16000});result.link_checks.push({url:link,final_url:check.url,status:check.status,redirected:check.url!==link,ok:check.status>=200&&check.status<400})}catch(error){result.link_checks.push({url:link,status:0,ok:false,error:String(error.message||error).slice(0,140)})}}
+  result.link_check_summary={checked:result.link_checks.length,broken:result.link_checks.filter(x=>!x.ok).length,redirects:result.link_checks.filter(x=>x.redirected).length,limit:30};
+  return json(result);
 }
 if(url.pathname==="/api/site-discovery"&&request.method==="POST"){
  if(!await authorized(request,env))return json({error:"Session expired. Sign in again."},401);
