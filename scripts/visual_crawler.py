@@ -10,6 +10,10 @@ import re
 import socket
 import sys
 import time
+import gzip
+from urllib.parse import urljoin
+from urllib.robotparser import RobotFileParser
+from site_discovery import parse_sitemap_document, same_site_http_url
 from collections import deque
 from urllib.parse import urldefrag, urlparse, urlunparse
 
@@ -25,6 +29,98 @@ DEVICES = {
     "Mobile": {"width": 390, "height": 844},
 }
 DNS_CACHE = {}
+
+
+MAX_SITEMAP_FILES = 20
+MAX_SITEMAP_BYTES = 2 * 1024 * 1024
+
+
+
+async def fetch_bounded_text(client, url, limit=MAX_SITEMAP_BYTES):
+    """Fetch a small public discovery document without unbounded response buffering."""
+    chunks = []
+    size = 0
+    async with client.stream("GET", url, timeout=20.0, follow_redirects=True,
+                             headers={"User-Agent": "PythonScraperDashboard/1.0 (+public-site-crawler)"} ) as response:
+        final_url = str(response.url)
+        await validate_public_url(final_url)
+        if response.status_code < 200 or response.status_code >= 300:
+            return response.status_code, final_url, ""
+        async for chunk in response.aiter_bytes():
+            size += len(chunk)
+            if size > limit:
+                raise ValueError(f"Discovery document exceeds {limit // 1024} KB safety limit.")
+            chunks.append(chunk)
+        raw = b"".join(chunks)
+        if final_url.lower().endswith(".gz") and raw.startswith(bytes((31, 139))):
+            with gzip.GzipFile(fileobj=BytesIO(raw)) as compressed:
+                raw = compressed.read(limit + 1)
+            if len(raw) > limit:
+                raise ValueError(f"Decompressed sitemap exceeds {limit // 1024} KB safety limit.")
+        return response.status_code, final_url, raw.decode("utf-8", errors="replace")
+
+
+async def discover_sitemap_urls(client, start_url, limit):
+    """Discover same-host sitemap URLs; bounded by file count, bytes and requested page cap."""
+    root = urlparse(start_url)
+    origin = f"{root.scheme}://{root.netloc}"
+    robots_url = urljoin(origin, "/robots.txt")
+    robots_status = None
+    robots_parser = RobotFileParser()
+    sitemap_queue = deque()
+    try:
+        robots_status, robots_final, robots_text = await fetch_bounded_text(client, robots_url, 256 * 1024)
+        if 200 <= robots_status < 300:
+            robots_parser.set_url(robots_final)
+            robots_parser.parse(robots_text.splitlines())
+            for line in robots_text.splitlines():
+                if line.strip().lower().startswith("sitemap:"):
+                    sitemap_queue.append(line.split(":", 1)[1].strip())
+    except Exception as exc:
+        print(f"[discovery-warning] robots.txt unavailable: {str(exc)[:180]}", flush=True)
+    if not sitemap_queue:
+        sitemap_queue.append(urljoin(origin, "/sitemap.xml"))
+
+    found = []
+    found_set = set()
+    visited_sitemaps = set()
+    sitemap_count = 0
+    while sitemap_queue and sitemap_count < MAX_SITEMAP_FILES and len(found) < limit:
+        sitemap_url = sitemap_queue.popleft()
+        if sitemap_url in visited_sitemaps:
+            continue
+        visited_sitemaps.add(sitemap_url)
+        if not same_site_http_url(sitemap_url, root.hostname):
+            continue
+        try:
+            await validate_public_url(sitemap_url)
+            status, final_url, xml_text = await fetch_bounded_text(client, sitemap_url)
+            sitemap_count += 1
+            if status < 200 or status >= 300:
+                continue
+            kind, locations = parse_sitemap_document(xml_text)
+            if kind == "index":
+                for location in locations:
+                    child = urljoin(final_url, location)
+                    if same_site_http_url(child, root.hostname) and child not in visited_sitemaps and len(sitemap_queue) < MAX_SITEMAP_FILES:
+                        sitemap_queue.append(child)
+            elif kind == "urlset":
+                for location in locations:
+                    candidate = normalize_url(urljoin(final_url, location))
+                    if not same_site_http_url(candidate, root.hostname) or candidate in found_set:
+                        continue
+                    if not robots_parser.can_fetch("*", candidate) and robots_status and 200 <= robots_status < 300:
+                        continue
+                    found_set.add(candidate)
+                    found.append(candidate)
+                    if len(found) >= limit:
+                        break
+        except Exception as exc:
+            print(f"[discovery-warning] sitemap skipped {sitemap_url}: {str(exc)[:180]}", flush=True)
+    return found, {"robots_status": robots_status, "sitemaps_read": sitemap_count,
+                   "sitemap_limit": MAX_SITEMAP_FILES, "url_limit": limit,
+                   "sitemaps_truncated": bool(sitemap_queue), "url_limit_reached": bool(limit and len(found) >= limit),
+                   "robots_url": robots_url}, robots_parser
 
 
 def normalize_url(value):
@@ -170,7 +266,18 @@ async def main():
     async with httpx.AsyncClient() as client:
         await emit(client, crawl_id, "booting", message="Launching Chromium runner", max_pages=limit, devices=selected)
         records = []
+        sitemap_urls, discovery_meta, robots_parser = await discover_sitemap_urls(client, start_url, max(0, limit - 1))
+        if discovery_meta["robots_status"] and 200 <= discovery_meta["robots_status"] < 300 and not robots_parser.can_fetch("*", start_url):
+            raise ValueError("The requested start URL is disallowed by the site's robots.txt rules.")
         queue = deque([start_url])
+        for candidate in sitemap_urls:
+            if candidate != start_url and candidate not in queue:
+                queue.append(candidate)
+        discovered_urls = list(dict.fromkeys([start_url, *sitemap_urls]))[:limit]
+        discovered_set = set(discovered_urls)
+        await emit(client, crawl_id, "url_inventory", urls=discovered_urls, total=len(discovered_urls),
+                   truncated=discovery_meta["sitemaps_truncated"] or discovery_meta["url_limit_reached"], sources=["robots.txt", "sitemap.xml", "internal links"],
+                   discovery=discovery_meta, message=f"URL discovery seeded {len(discovered_urls)} same-site URLs")
         seen = set()
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
@@ -245,10 +352,19 @@ async def main():
                                 candidate = normalize_url(candidate)
                                 parsed = urlparse(candidate)
                                 root = urlparse(start_url)
-                                if parsed.scheme in ("http", "https") and parsed.hostname == root.hostname and candidate not in seen and candidate not in queue and len(seen) + len(queue) < limit * 3 and not re.search(r"\.(pdf|zip|png|jpe?g|gif|svg|webp|mp4|mp3|css|js|xml|json)(\?|$)", candidate, re.I):
+                                if same_site_http_url(candidate, root.hostname) and candidate not in seen and candidate not in queue and len(discovered_urls) < limit and not re.search(r"\.(pdf|zip|png|jpe?g|gif|svg|webp|mp4|mp3|css|js|xml|json)(\?|$)", candidate, re.I):
+                                    if not robots_parser.can_fetch("*", candidate):
+                                        continue
+                                    await validate_public_url(candidate)
                                     queue.append(candidate)
+                                    if candidate not in discovered_set:
+                                        discovered_set.add(candidate)
+                                        discovered_urls.append(candidate)
                             except Exception:
                                 continue
+                        await emit(client, crawl_id, "url_inventory", urls=discovered_urls, total=len(discovered_urls),
+                                   truncated=len(discovered_urls) >= limit, sources=["robots.txt", "sitemap.xml", "internal links"],
+                                   discovery=discovery_meta, message=f"Discovered {len(discovered_urls)} URLs so far")
                         records.append({"url": url, "title": title, "status": status, "checks": checks})
                         await emit(client, crawl_id, "page_done", url=url, page=page_number, total=limit, device=selected[-1], status=status, checks=checks, message=f"Completed page {page_number}")
                     except Exception as exc:
