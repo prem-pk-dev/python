@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { auditSeo, fetchPublicText, inspectSiteDiscovery, parseSitemapLocs } from "../cloudflare/seo-tools.js";
+import { auditSeo, detectTechStack, fetchPublicText, inspectSiteDiscovery, parseSitemapLocs } from "../cloudflare/seo-tools.js";
 
 function decode(value) {
   return String(value || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').trim();
@@ -85,4 +85,11 @@ test("sitemap discovery follows only same-host sitemap indexes", async () => {
   assert.equal(result.sitemaps.length, 2);
   assert.deepEqual(result.urls, ["https://example.com/a", "https://example.com/b"]);
   assert.equal(fetched.some(url => url.includes("elsewhere.test")), false);
+});
+
+test("technology detector identifies common public HTML signatures and headers", () => {
+  const stack = detectTechStack('<div id="__next"><div class="tw-flex"></div></div><script src="/_next/static/chunks/main.js"></script>', { server: "cloudflare" });
+  assert.ok(stack.includes("Next.js"));
+  assert.ok(stack.includes("Tailwind CSS"));
+  assert.ok(stack.includes("Cloudflare"));
 });
