@@ -21,6 +21,10 @@ def parse_sitemap_document(xml_text):
 def same_site_http_url(candidate, root_host):
     try:
         parsed = urlparse(candidate)
-        return parsed.scheme in ("http", "https") and parsed.hostname and parsed.hostname.lower() == root_host.lower()
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        candidate_host = parsed.hostname.lower().rstrip(".")
+        root = root_host.lower().rstrip(".")
+        return candidate_host == root or candidate_host.removeprefix("www.") == root.removeprefix("www.")
     except Exception:
         return False
