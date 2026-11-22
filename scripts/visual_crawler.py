@@ -168,7 +168,7 @@ async def validate_public_url(value):
 
 
 async def emit(client, crawl_id, event_type, **payload):
-    message = {"crawl_id": crawl_id, "type": event_type, "timestamp": int(time.time() * 1000), **payload}
+    message = {"crawl_id": crawl_id, "type": event_type, "timestamp": int(time.time() * 1000), "workflow_run_id": os.environ.get("GITHUB_RUN_ID"), **payload}
     try:
         response = await client.post(
             f"{os.environ['WORKER_BASE_URL'].rstrip('/')}/api/crawl/{crawl_id}/ingest",
@@ -292,8 +292,25 @@ async def main():
                     page = await browser.new_page(viewport=DEVICES["Desktop"])
                     await page.route("**/*", request_guard)
                     console_errors = []
+                    asset_failures = []
+                    heavy_images = []
+                    total_page_bytes = 0
                     page.on("console", lambda message: console_errors.append(message.text[:240]) if message.type == "error" and len(console_errors) < 40 else None)
                     page.on("pageerror", lambda error: console_errors.append(str(error)[:240]) if len(console_errors) < 40 else None)
+                    async def inspect_response(asset_response):
+                        nonlocal total_page_bytes
+                        try:
+                            headers = await asset_response.all_headers()
+                            size = int(headers.get("content-length", "0") or 0)
+                            total_page_bytes += size
+                            resource_type = asset_response.request.resource_type
+                            if resource_type == "image" and size > 500 * 1024 and len(heavy_images) < 30:
+                                heavy_images.append({"url": asset_response.url, "bytes": size})
+                            if asset_response.status >= 400 and len(asset_failures) < 50:
+                                asset_failures.append({"url": asset_response.url, "status": asset_response.status, "resource_type": resource_type})
+                        except Exception:
+                            pass
+                    page.on("response", lambda response: asyncio.create_task(inspect_response(response)))
                     started = time.perf_counter()
                     response = None
                     preview_task = None
@@ -321,6 +338,12 @@ async def main():
                             "http_status": status,
                             "http_ok": bool(status and 200 <= status < 400),
                             "load_time_ms": load_time,
+                            "total_page_bytes": total_page_bytes,
+                            "total_page_size_kb": round(total_page_bytes / 1024, 1),
+                            "heavy_images": heavy_images[:30],
+                            "heavy_image_count": len(heavy_images),
+                            "broken_assets": asset_failures[:50],
+                            "broken_asset_count": len(asset_failures),
                             "console_errors": console_errors[:40],
                             "console_error_count": len(console_errors),
                             "broken_images": discovered["brokenImages"],
