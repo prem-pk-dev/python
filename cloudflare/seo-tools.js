@@ -43,7 +43,7 @@ export async function fetchPublicText(raw, { publicUrl, publicCrawlUrl, fetchImp
       current = publicUrl(new URL(location, current).href);
       continue;
     }
-    return { url: current.href, status: response.status, content_type: response.headers.get("Content-Type") || "", headers: Object.fromEntries(response.headers.entries()), redirects, text: await readBoundedText(response, limit) };
+    return { url: current.href, status: response.status, content_type: response.headers.get("Content-Type") || "", headers: { server: response.headers.get("Server") || "", "x-powered-by": response.headers.get("X-Powered-By") || "" }, redirects, text: await readBoundedText(response, limit) };
   }
   throw new Error("Too many redirects.");
 }
