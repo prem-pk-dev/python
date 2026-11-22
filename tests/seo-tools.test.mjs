@@ -88,7 +88,7 @@ test("sitemap discovery follows only same-host sitemap indexes", async () => {
 });
 
 test("technology detector identifies common public HTML signatures and headers", () => {
-  const stack = detectTechStack('<div id="__next"><div class="tw-flex"></div></div><script src="/_next/static/chunks/main.js"></script>', { server: "cloudflare" });
+  const stack = detectTechStack('<div id="__next"><div data-style="tailwindcss"></div></div><script src="/_next/static/chunks/main.js"></script>', { server: "cloudflare" });
   assert.ok(stack.includes("Next.js"));
   assert.ok(stack.includes("Tailwind CSS"));
   assert.ok(stack.includes("Cloudflare"));
