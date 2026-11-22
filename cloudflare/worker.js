@@ -509,6 +509,7 @@ function extractSelector(html,selector){
   if(!/^(?:[a-z][\\w-]*|[.#][\\w-]+|[a-z][\\w-]*\\[[\\w:-]+(?:=[\\w-]+)?\\])$/i.test(sel))throw new Error("Supported selectors: tag, .class, #id, tag[attr], tag[attr=value].");
   const tag=(sel.match(/^[a-z][\\w-]*/i)||[])[0]||"[a-z][\\w:-]*";
   for(const m of html.matchAll(new RegExp("<("+tag+")\\\\b([^>]*)>([\\\\s\\\\S]*?)<\\\\/\\\\1\\\\s*>","gi"))){
+   if(rawSel.toLowerCase().startsWith("table ")&&html.lastIndexOf("<table",m.index)<html.lastIndexOf("</table",m.index))continue;
    const attrs=m[2],plain=cleanText(m[3]);
    if(sel[0]==="."&&!new RegExp("class\\\\s*=\\\\s*[\"'][^\"']*\\\\b"+sel.slice(1)+"\\\\b").test(attrs))continue;
    if(sel[0]==="#"&&attrValue("<x "+attrs+">","id")!==sel.slice(1))continue;
