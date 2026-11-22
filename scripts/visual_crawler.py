@@ -75,7 +75,8 @@ async def fetch_bounded_text(client, url, limit=MAX_SITEMAP_BYTES):
             chunks.append(chunk)
         raw = b"".join(chunks)
         if final_url.lower().endswith(".gz"):
-            raw = gzip.decompress(raw)
+            with gzip.GzipFile(fileobj=BytesIO(raw)) as compressed:
+                raw = compressed.read(limit + 1)
             if len(raw) > limit:
                 raise ValueError(f"Decompressed sitemap exceeds {limit // 1024} KB safety limit.")
         return response.status_code, final_url, raw.decode("utf-8", errors="replace")
@@ -140,7 +141,7 @@ async def discover_sitemap_urls(client, start_url, limit):
             print(f"[discovery-warning] sitemap skipped {sitemap_url}: {str(exc)[:180]}", flush=True)
     return found, {"robots_status": robots_status, "sitemaps_read": sitemap_count,
                    "sitemap_limit": MAX_SITEMAP_FILES, "url_limit": limit,
-                   "robots_url": robots_url}
+                   "robots_url": robots_url}, robots_parser
 
 
 def normalize_url(value):
@@ -362,9 +363,8 @@ async def main():
                                 parsed = urlparse(candidate)
                                 root = urlparse(start_url)
                                 if same_site_http_url(candidate, root.hostname) and candidate not in seen and candidate not in queue and len(discovered_urls) < limit and not re.search(r"\.(pdf|zip|png|jpe?g|gif|svg|webp|mp4|mp3|css|js|xml|json)(\?|$)", candidate, re.I):
-                                    if discovery_meta["robots_status"] and 200 <= discovery_meta["robots_status"] < 300:
-                                        # Reuse robots policy parsed during sitemap discovery when available.
-                                        pass
+                                    if not robots_parser.can_fetch("*", candidate):
+                                        continue
                                     await validate_public_url(candidate)
                                     queue.append(candidate)
                                     if candidate not in discovered_set:
