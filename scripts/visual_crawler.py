@@ -52,7 +52,7 @@ async def fetch_bounded_text(client, url, limit=MAX_SITEMAP_BYTES):
                 raise ValueError(f"Discovery document exceeds {limit // 1024} KB safety limit.")
             chunks.append(chunk)
         raw = b"".join(chunks)
-        if final_url.lower().endswith(".gz") and raw.startswith(b"\\x1f\\x8b"):
+        if final_url.lower().endswith(".gz") and raw.startswith(bytes((31, 139))):
             with gzip.GzipFile(fileobj=BytesIO(raw)) as compressed:
                 raw = compressed.read(limit + 1)
             if len(raw) > limit:
