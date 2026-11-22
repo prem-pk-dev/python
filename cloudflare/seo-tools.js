@@ -26,6 +26,7 @@ function readBoundedText(response, limit) {
 
 export async function fetchPublicText(raw, { publicUrl, publicCrawlUrl, fetchImpl = fetch, limit = 1000000 }) {
   let current = publicUrl(raw);
+  const redirects = [];
   for (let i = 0; i < 4; i++) {
     await publicCrawlUrl(current.href);
     const response = await fetchImpl(current, {
@@ -38,15 +39,32 @@ export async function fetchPublicText(raw, { publicUrl, publicCrawlUrl, fetchImp
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("Location");
       if (!location) throw new Error("Website redirect had no Location header.");
+      redirects.push({ status: response.status, from: current.href, to: new URL(location, current).href });
       current = publicUrl(new URL(location, current).href);
       continue;
     }
-    return { url: current.href, status: response.status, content_type: response.headers.get("Content-Type") || "", text: await readBoundedText(response, limit) };
+    return { url: current.href, status: response.status, content_type: response.headers.get("Content-Type") || "", headers: { server: response.headers.get("Server") || "", "x-powered-by": response.headers.get("X-Powered-By") || "" }, redirects, text: await readBoundedText(response, limit) };
   }
   throw new Error("Too many redirects.");
 }
 
-export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMatches, cleanText }) {
+export function detectTechStack(html, headers = {}) {
+  const source = String(html || "").toLowerCase();
+  const h = Object.fromEntries(Object.entries(headers || {}).map(([k, v]) => [k.toLowerCase(), String(v).toLowerCase()]));
+  const found = [];
+  const add = (name, yes) => { if (yes && !found.includes(name)) found.push(name); };
+  add("Next.js", /__next|_next\/static|next-router-state-tree/.test(source));
+  add("React", /react\.dom|reactroot|__react|data-reactroot/.test(source));
+  add("WordPress", /wp-content|wp-includes|wp-json/.test(source) || /x-powered-by.*wordpress/.test(h.server || ""));
+  add("Tailwind CSS", /tailwindcss|--tw-[a-z-]+/.test(source));
+  add("Shopify", /cdn\.shopify\.com|shopify-section|\.myshopify\.com/.test(source));
+  add("Vite", /@vite\/client|vite\/modulepreload/.test(source));
+  add("Cloudflare", /cf-ray|cloudflare/.test(h.server || "") || /__cf_bm|cf_clearance/.test(source));
+  add("Vue", /__vue__|data-v-[a-f0-9]+|vue\.runtime/.test(source));
+  add("Angular", /ng-version=|ng-app=/.test(source));
+  return found;
+}
+export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMatches, cleanText, headers = {} }) {
   const title = decode(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
   const description = meta(html, "description", "name");
   let canonical = "";
@@ -78,7 +96,7 @@ export function auditSeo(html, url, status, { decode, meta, attrValue, findTagMa
     { label: "Structured data", status: schema ? "pass" : "warn", detail: schema ? "JSON-LD detected" : "No JSON-LD script detected" }
   ];
   const score = Math.round(checks.reduce((sum, check) => sum + (check.status === "pass" ? 12.5 : check.status === "warn" ? 7 : 0), 0));
-  return { url, status_code: status, score, title, description, canonical, h1, images_count: images.length, images_missing_alt: missingAlt, robots_meta: robots, checks };
+  return { url, status_code: status, score, title, description, canonical, h1, images_count: images.length, images_missing_alt: missingAlt, robots_meta: robots, tech_stack: detectTechStack(html, headers), checks };
 }
 
 export function parseSitemapLocs(xml, decode) {
