@@ -613,10 +613,21 @@ async function sign(payload,secret){const key=await crypto.subtle.importKey("raw
 async function createWsToken(crawlId,secret){const payload=btoa(JSON.stringify({crawl_id:crawlId,exp:Date.now()+2*60*1000})).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");return payload+"."+await sign(payload,secret)}
 async function verifyWsToken(token,crawlId,env){const [payload,sig]=String(token||"").split(".");if(!payload||!sig||!env.DASHBOARD_PASSWORD)return false;try{if(await sign(payload,env.DASHBOARD_PASSWORD)!==sig)return false;const data=JSON.parse(atob(payload.replace(/-/g,"+").replace(/_/g,"/")));return data.crawl_id===crawlId&&data.exp>Date.now()}catch{return false}}
 async function authorized(request,env){const h=request.headers.get("Authorization")||"";const token=h.startsWith("Bearer ")?h.slice(7):"";const [payload,sig]=token.split(".");if(!payload||!sig)return false;try{const expected=await sign(payload,env.DASHBOARD_PASSWORD);if(expected!==sig)return false;const data=JSON.parse(atob(payload.replace(/-/g,"+").replace(/_/g,"/")));return data.exp>Date.now()}catch{return false}}
-function decode(s){return (s||"").replace(/&nbsp;|&#160;|&#xA0;/gi," ").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&#(\\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([\\da-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16))).trim()}
+const HTML_ENTITIES={nbsp:" ",ensp:" ",emsp:" ",thinsp:" ",quot:'"',apos:"'",amp:"&",lt:"<",gt:">",sol:"/",colon:":",period:".",comma:",",semi:";",num:"#",equals:"=",lpar:"(",rpar:")",lsqb:"[",rsqb:"]",mdash:"—",ndash:"–",hellip:"…",copy:"©",reg:"®",trade:"™",bull:"•",middot:"·",rsquo:"’",lsquo:"‘",rdquo:"”",ldquo:"“",euro:"€",pound:"£",cent:"¢",times:"×",divide:"÷"};
+function decode(value){
+ let text=String(value??"");
+ for(let pass=0;pass<3;pass++){
+  const next=text.replace(/&(#x[0-9a-f]{1,8}|#\d{1,8}|[a-z][a-z0-9]+);/gi,(entity,code)=>{
+   if(code[0]==="#"){const hex=code[1]?.toLowerCase()==="x",number=parseInt(code.slice(hex?2:1),hex?16:10);if(!Number.isFinite(number)||number<=0||number>0x10ffff||(number>=0xd800&&number<=0xdfff))return "\uFFFD";try{return String.fromCodePoint(number)}catch{return "\uFFFD"}}
+   return Object.prototype.hasOwnProperty.call(HTML_ENTITIES,code.toLowerCase())?HTML_ENTITIES[code.toLowerCase()]:entity;
+  });
+  if(next===text)break;text=next;
+ }
+ return text.trim();
+}
 function meta(html,key,attr="property"){for(const m of html.matchAll(/<meta\b[^>]*>/gi)){const tag=m[0];const av=tag.match(new RegExp("\\b"+attr+"\\s*=\\s*[\"']([^\"']+)","i"))?.[1];if(av===key){const cv=tag.match(/\bcontent\s*=\s*[\"']([^\"']*)/i)?.[1]||"";return decode(cv)}}return ""}
 function collapseRepeatedPrefix(value){const text=(value||"").trim();const max=Math.min(700,Math.floor(text.length/2));for(let n=max;n>=40;n--){const prefix=text.slice(0,n);const at=text.indexOf(prefix,n);if(at>=n&&at<=900)return text.slice(at).trim()}return text}
-function cleanText(html){return decode(html.replace(/<!--[\s\S]*?-->/g," ").replace(/<script\b(?:"[^"]*"|'[^']*'|[^'">])*?>[\s\S]*?<\/script\s*>/gi," ").replace(/<style\b(?:"[^"]*"|'[^']*'|[^'">])*?>[\s\S]*?<\/style\s*>/gi," ").replace(/<\/?[a-z][\w:-]*(?:\s+(?:"[^"]*"|'[^']*'|[^'"<>])*)?\s*\/?>/gi," ").replace(/\s+/g," "))}
+function cleanText(html){return decode(String(html??"").replace(/<!--[\s\S]*?-->/g," ").replace(/<(script|style|noscript|svg)\b[^>]*>[\s\S]*?<\/\1\s*>/gi," ").replace(/<[^>]*>/g," ").replace(/\s+/g," "))}
 function findTagMatches(html,tags){const re=new RegExp("<("+tags+")\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>([\\s\\S]*?)<\\/\\1\\s*>","gi");return [...html.matchAll(re)]}
 function findTagText(html,tag){const match=findTagMatches(html,tag)[0];return match?cleanText(match[3]):""}
 function findClassText(html,tag,className){const re=new RegExp("<"+tag+"\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>([\\s\\S]*?)<\\/"+tag+"\\s*>","gi");for(const match of html.matchAll(re)){if(new RegExp("\\bclass\\s*=\\s*([\"'])[^\"']*\\b"+className+"\\b[^\"']*\\1","i").test(match[1]))return cleanText(match[2])}return ""}
@@ -653,14 +664,31 @@ async function hnCache(key,ttl,producer){
 }
 async function hnMapLimit(items,limit,fn){const out=new Array(items.length);let next=0;const workers=Array.from({length:Math.min(limit,items.length)},async()=>{while(true){const i=next++;if(i>=items.length)return;try{out[i]=await fn(items[i],i)}catch{out[i]=null}}});await Promise.all(workers);return out}
 async function hnTranslate(text){
- const source=String(text||"").trim();if(!source)return "";const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(source)),key=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,"0")).join("");
- return hnCache("translate-hi-"+key,86400,async()=>{const chunks=[];for(let i=0;i<source.length;i+=1600)chunks.push(source.slice(i,i+1600));const translated=[];for(const chunk of chunks){try{const endpoint=new URL("https://translate.googleapis.com/translate_a/single");endpoint.searchParams.set("client","gtx");endpoint.searchParams.set("sl","auto");endpoint.searchParams.set("tl","hi");endpoint.searchParams.set("dt","t");endpoint.searchParams.set("q",chunk);const response=await fetch(endpoint,{headers:{"Accept":"application/json"},signal:AbortSignal.timeout(7000)});if(!response.ok)throw new Error("translation unavailable");const data=await response.json();translated.push((data[0]||[]).map(part=>part[0]||"").join("")||chunk)}catch{translated.push(chunk)}}return translated.join("")});
+ const source=cleanText(String(text||""));if(!source)return "";
+ const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(source)),key=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,"0")).join("");
+ try{return await hnCache("translate-hi-v2-"+key,86400,async()=>{
+  const chunks=[];for(let i=0;i<source.length;i+=1200)chunks.push(source.slice(i,i+1200));
+  const translated=[];
+  for(const chunk of chunks){
+   let result="",lastError=null;
+   for(let attempt=0;attempt<2&&!result;attempt++){
+    try{
+     const endpoint=new URL("https://translate.googleapis.com/translate_a/single");endpoint.searchParams.set("client","gtx");endpoint.searchParams.set("sl","en");endpoint.searchParams.set("tl","hi");endpoint.searchParams.set("dt","t");endpoint.searchParams.set("q",chunk);
+     const response=await fetch(endpoint,{headers:{"Accept":"application/json"},signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error("Translation endpoint HTTP "+response.status);
+     const data=await response.json();result=decode((data[0]||[]).map(part=>part[0]||"").join(""));if(!result)throw new Error("Translation response was empty");
+    }catch(error){lastError=error}
+   }
+   if(!result)throw lastError||new Error("Translation unavailable");
+   translated.push(result);
+  }
+  return translated.join("");
+ })}catch{return source}
 }
 function hnSafeImage(raw,base){try{const image=new URL(raw,base);if(image.protocol!=="https:"||/\.pdf(?:$|[?#])/i.test(image.pathname))return "";return image.href}catch{return ""}}
 async function hnArticleMeta(raw){if(!raw||/\.pdf(?:$|[?#])/i.test(raw))return {image:"",description:""};return hnCache("article-meta-"+raw,21600,async()=>{try{const page=await fetchPublicText(raw,{publicUrl,publicCrawlUrl,limit:450000});if(!page.content_type.toLowerCase().includes("html")||page.status<200||page.status>=400)return {image:"",description:""};const html=page.text,image=hnSafeImage(meta(html,"og:image")||meta(html,"twitter:image","name")||meta(html,"og:image:url"),page.url),description=cleanText(meta(html,"og:description")||meta(html,"description","name")).slice(0,420);return {image,description}}catch{return {image:"",description:""}}})}
 async function hnStory(id){const response=await fetch("https://hacker-news.firebaseio.com/v0/item/"+encodeURIComponent(id)+".json",{headers:{"Accept":"application/json"},signal:AbortSignal.timeout(7000)});if(!response.ok)throw new Error("Hacker News item unavailable");const item=await response.json();if(!item||item.deleted||item.dead)throw new Error("Story is unavailable");return item}
 async function hnReaderData(id,mode){
- const item=await hnStory(id),storyUrl=typeof item.url==="string"?item.url:"",isPdf=/\.pdf(?:$|[?#])/i.test(storyUrl),base={id:item.id,title:decode(item.title||""),by:item.by||"",time:Number(item.time||0),domain:(()=>{try{return new URL(storyUrl).hostname.replace(/^www\./,"")}catch{return"Hacker News"}})()};
+ const item=await hnStory(id),storyUrl=typeof item.url==="string"?item.url:"",isPdf=/\.pdf(?:$|[?#])/i.test(storyUrl),base={id:item.id,title:cleanText(item.title||""),by:item.by||"",time:Number(item.time||0),domain:(()=>{try{return new URL(storyUrl).hostname.replace(/^www\./,"")}catch{return"Hacker News"}})()};
  if(mode==="discussion"){const kids=(Array.isArray(item.kids)?item.kids:[]).slice(0,12),[title_hi,imageMeta]=await Promise.all([hnTranslate(base.title),storyUrl?hnArticleMeta(storyUrl):Promise.resolve({image:""})]),comments=await hnMapLimit(kids,3,async childId=>{const child=await hnStory(childId);if(!child.text||child.deleted||child.dead)return null;const text=cleanText(child.text).slice(0,2600);return {by:child.by||"unknown",time:Number(child.time||0),text,text_hi:await hnTranslate(text)}});return {...base,title_hi,score:Number(item.score||0),descendants:Number(item.descendants||0),image:imageMeta.image||"",comments:comments.filter(Boolean)}}
  let paragraphs=[],image="",summary=cleanText(item.text||"").slice(0,1800),sourceNote="";
  if(storyUrl&&!isPdf){try{const page=await fetchPublicText(storyUrl,{publicUrl,publicCrawlUrl,limit:900000});if(page.status>=200&&page.status<400&&page.content_type.toLowerCase().includes("html")){const html=page.text;image=hnSafeImage(meta(html,"og:image")||meta(html,"twitter:image","name")||meta(html,"og:image:url"),page.url);let main=html.replace(/<!--[\s\S]*?-->/g," ").replace(/<(script|style|noscript|svg|nav|header|footer|aside|form|iframe|button)\b[^>]*>[\s\S]*?<\/\1\s*>/gi," ");const mainMatch=main.match(/<(?:article|main)\b[^>]*>([\s\S]*?)<\/(?:article|main)\s*>/i);if(mainMatch)main=mainMatch[1];const seen=new Set();paragraphs=[...main.matchAll(/<(p|h2|h3|blockquote)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi)].map(match=>cleanText(match[2])).filter(text=>text.length>45&&!/cookie|subscribe|advertisement|sign in|privacy policy/i.test(text)).filter(text=>{const key=text.toLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,24).map(text=>text.slice(0,2200));if(!paragraphs.length)sourceNote="Article text was not extractable from the public page."}else sourceNote="The source did not return a readable HTML article."}catch(error){sourceNote=String(error.message||"The source blocked automated reading.").slice(0,180)}}else if(isPdf)sourceNote="PDF sources are not opened or redirected; showing the available story summary instead.";
@@ -759,7 +787,7 @@ if(url.pathname==="/api/site-discovery"&&request.method==="POST"){
  if(!Object.prototype.hasOwnProperty.call(feeds,category))return json({error:"Category must be top, new, best, or show."},400);
  const result=await hnCache("feed-"+category,90,async()=>{
   const response=await fetch("https://hacker-news.firebaseio.com/v0/"+feeds[category]+".json",{headers:{"Accept":"application/json"},signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error("Hacker News API returned HTTP "+response.status);const ids=await response.json();if(!Array.isArray(ids))throw new Error("Hacker News returned an invalid story list.");
-  const selected=ids.slice(0,18),stories=await hnMapLimit(selected,3,async id=>{const item=await hnStory(id);if(!item.title)return null;const title=decode(item.title),text=cleanText(item.text||"").slice(0,420),url=(()=>{try{const target=new URL(item.url);return["http:","https:"].includes(target.protocol)?target.href:""}catch{return""}})(),metaInfo=url?await hnArticleMeta(url):{image:"",description:""},summary=text||metaInfo.description||"",[title_hi,text_hi]=await Promise.all([hnTranslate(title),hnTranslate(summary)]);return{id:item.id,title,title_hi,url,by:item.by||"unknown",score:Number(item.score||0),descendants:Number(item.descendants||0),time:Number(item.time||0),text:summary,text_hi,image:metaInfo.image}});
+  const selected=ids.slice(0,18),stories=await hnMapLimit(selected,3,async id=>{const item=await hnStory(id);if(!item.title)return null;const title=cleanText(item.title),text=cleanText(item.text||"").slice(0,420),url=(()=>{try{const target=new URL(item.url);return["http:","https:"].includes(target.protocol)?target.href:""}catch{return""}})(),metaInfo=url?await hnArticleMeta(url):{image:"",description:""},summary=text||metaInfo.description||"",[title_hi,text_hi]=await Promise.all([hnTranslate(title),hnTranslate(summary)]);return{id:item.id,title,title_hi,url,by:item.by||"unknown",score:Number(item.score||0),descendants:Number(item.descendants||0),time:Number(item.time||0),text:summary,text_hi,image:metaInfo.image}});
   return {category,stories:stories.filter(Boolean),updated_at:Date.now()};
  });return json(result);
 }
