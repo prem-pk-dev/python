@@ -663,25 +663,30 @@ async function hnCache(key,ttl,producer){
  const value=await producer();if(cache){try{await cache.put(request,new Response(JSON.stringify(value),{headers:{"Content-Type":"application/json","Cache-Control":"public,max-age="+ttl}}))}catch{}}return value;
 }
 async function hnMapLimit(items,limit,fn){const out=new Array(items.length);let next=0;const workers=Array.from({length:Math.min(limit,items.length)},async()=>{while(true){const i=next++;if(i>=items.length)return;try{out[i]=await fn(items[i],i)}catch{out[i]=null}}});await Promise.all(workers);return out}
+let hnTranslateQueue=Promise.resolve();
 async function hnTranslate(text){
  const source=cleanText(String(text||""));if(!source)return "";
  const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(source)),key=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,"0")).join("");
  try{return await hnCache("translate-hi-v2-"+key,86400,async()=>{
-  const chunks=[];for(let i=0;i<source.length;i+=1200)chunks.push(source.slice(i,i+1200));
-  const translated=[];
-  for(const chunk of chunks){
-   let result="",lastError=null;
-   for(let attempt=0;attempt<2&&!result;attempt++){
-    try{
-     const endpoint=new URL("https://translate.googleapis.com/translate_a/single");endpoint.searchParams.set("client","gtx");endpoint.searchParams.set("sl","en");endpoint.searchParams.set("tl","hi");endpoint.searchParams.set("dt","t");endpoint.searchParams.set("q",chunk);
-     const response=await fetch(endpoint,{headers:{"Accept":"application/json"},signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error("Translation endpoint HTTP "+response.status);
-     const data=await response.json();result=decode((data[0]||[]).map(part=>part[0]||"").join(""));if(!result)throw new Error("Translation response was empty");
-    }catch(error){lastError=error}
+  const task=hnTranslateQueue.then(async()=>{
+   const chunks=[];for(let i=0;i<source.length;i+=1200)chunks.push(source.slice(i,i+1200));
+   const translated=[];
+   for(const chunk of chunks){
+    let result="",lastError=null;
+    for(let attempt=0;attempt<2&&!result;attempt++){
+     try{
+      const endpoint=new URL("https://translate.googleapis.com/translate_a/single");endpoint.searchParams.set("client","gtx");endpoint.searchParams.set("sl","en");endpoint.searchParams.set("tl","hi");endpoint.searchParams.set("dt","t");endpoint.searchParams.set("q",chunk);
+      const response=await fetch(endpoint,{headers:{"Accept":"application/json"},signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error("Translation endpoint HTTP "+response.status);
+      const data=await response.json();result=decode((data[0]||[]).map(part=>part[0]||"").join(""));if(!result)throw new Error("Translation response was empty");
+     }catch(error){lastError=error}
+    }
+    if(!result)throw lastError||new Error("Translation unavailable");
+    translated.push(result);
    }
-   if(!result)throw lastError||new Error("Translation unavailable");
-   translated.push(result);
-  }
-  return translated.join("");
+   return translated.join("");
+  });
+  hnTranslateQueue=task.catch(()=>{});
+  return task;
  })}catch{return source}
 }
 function hnSafeImage(raw,base){try{const image=new URL(raw,base);if(image.protocol!=="https:"||/\.pdf(?:$|[?#])/i.test(image.pathname))return "";return image.href}catch{return ""}}
