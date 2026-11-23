@@ -627,7 +627,7 @@ function decode(value){
 }
 function meta(html,key,attr="property"){for(const m of html.matchAll(/<meta\b[^>]*>/gi)){const tag=m[0];const av=tag.match(new RegExp("\\b"+attr+"\\s*=\\s*[\"']([^\"']+)","i"))?.[1];if(av===key){const cv=tag.match(/\bcontent\s*=\s*[\"']([^\"']*)/i)?.[1]||"";return decode(cv)}}return ""}
 function collapseRepeatedPrefix(value){const text=(value||"").trim();const max=Math.min(700,Math.floor(text.length/2));for(let n=max;n>=40;n--){const prefix=text.slice(0,n);const at=text.indexOf(prefix,n);if(at>=n&&at<=900)return text.slice(at).trim()}return text}
-function cleanText(html){return decode(String(html??"").replace(/<!--[\s\S]*?-->/g," ").replace(/<(script|style|noscript|svg)\b[^>]*>[\s\S]*?<\/\1\s*>/gi," ").replace(/<[^>]*>/g," ").replace(/\s+/g," "))}
+function cleanText(html){const decoded=decode(String(html??""));return decode(decoded.replace(/<!--[\s\S]*?-->/g," ").replace(/<(script|style|noscript|svg)\b[^>]*>[\s\S]*?<\/\1\s*>/gi," ").replace(/<[^>]*>/g," ").replace(/\s+/g," "))}
 function findTagMatches(html,tags){const re=new RegExp("<("+tags+")\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>([\\s\\S]*?)<\\/\\1\\s*>","gi");return [...html.matchAll(re)]}
 function findTagText(html,tag){const match=findTagMatches(html,tag)[0];return match?cleanText(match[3]):""}
 function findClassText(html,tag,className){const re=new RegExp("<"+tag+"\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>([\\s\\S]*?)<\\/"+tag+"\\s*>","gi");for(const match of html.matchAll(re)){if(new RegExp("\\bclass\\s*=\\s*([\"'])[^\"']*\\b"+className+"\\b[^\"']*\\1","i").test(match[1]))return cleanText(match[2])}return ""}
